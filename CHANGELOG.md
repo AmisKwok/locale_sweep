@@ -1,3 +1,14 @@
+## Unreleased
+
+- **Fix crash on the `flutter test --machine` startup line** — the CLI parsed
+  every stdout line as a JSON object, but `flutter test --machine` first prints a
+  JSON *array* line (`[{"event":"test.startedProcess","params":{...}}]`). The
+  resulting `TypeError` was not caught by the `on FormatException` handler, so
+  `run` and `update` aborted with an unhandled exception before writing any
+  results or report. Both shapes are now decoded by one shared helper
+  (`parseMachineLine` in `lib/src/cli/machine_output.dart`) that returns the
+  event objects a line carries and ignores anything else. No public API change.
+
 ## 0.6.1
 
 - **Truncation findings no longer fail direct tests** — truncation issues are now advisory in `flutter test` runs. They are recorded in `SweepResult` for the CLI's `--fail-on truncation` to handle, preventing unexpected test failures in existing suites after upgrading to 0.6.0.

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locale_sweep/locale_sweep.dart';
+import 'package:locale_sweep/src/cli/machine_output.dart';
 
 void main() {
   // ── parseFlowFromName ────────────────────────────────────────────────────
@@ -568,6 +569,57 @@ void main() {
       expect(report.failed, 0);
       expect(report.markdown, '# Report');
       expect(report.summary, 'All passed');
+    });
+  });
+
+  // ── parseMachineLine ────────────────────────────────────────────────────
+
+  group('parseMachineLine', () {
+    test('returns the event object of an object line', () {
+      final events = parseMachineLine('  {"type":"done","success":true}  ');
+      expect(events, hasLength(1));
+      expect(events.single['type'], 'done');
+      expect(events.single['success'], true);
+    });
+
+    test('keeps the payload of the JSON array line (regression)', () {
+      // Regression: this line used to be cast to Map<String, dynamic>, which
+      // threw "type 'List<dynamic>' is not a subtype of type
+      // 'Map<String, dynamic>'" and aborted `run` / `update` with an unhandled
+      // exception before any results or report were written.
+      const startupLine =
+          '[{"event":"test.startedProcess","params":{"vmServiceUri":null}}]';
+      final events = parseMachineLine(startupLine);
+      expect(events, hasLength(1));
+      expect(events.single['event'], 'test.startedProcess');
+    });
+
+    test('flattens an array line that carries several events', () {
+      final events = parseMachineLine(
+        '[{"type":"testStart","test":{"id":1}},{"type":"done"}]',
+      );
+      expect(events.map((e) => e['type']), ['testStart', 'done']);
+    });
+
+    test('ignores plain text, blank lines and non-object JSON', () {
+      expect(parseMachineLine('Building flutter tool...'), isEmpty);
+      expect(parseMachineLine(''), isEmpty);
+      expect(parseMachineLine('   '), isEmpty);
+      expect(parseMachineLine('{"type":"done"'), isEmpty);
+      expect(parseMachineLine('[1,2,3]'), isEmpty);
+    });
+
+    test('parseMachineOutput tolerates a transcript with the array line', () {
+      const transcript =
+          'Building flutter tool...\n'
+          '[{"event":"test.startedProcess","params":{"vmServiceUri":null}}]\n'
+          '{"type":"testStart","test":{"id":1,"name":"sweep: login [EN · 393x852]"}}\n'
+          '{"type":"testDone","testID":1,"hidden":false,"skipped":false,"result":"success"}\n'
+          '{"type":"done","success":true}\n';
+      expect(
+        () => parseMachineOutput(transcript, const SweepConfig()),
+        returnsNormally,
+      );
     });
   });
 }

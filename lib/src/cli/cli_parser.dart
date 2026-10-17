@@ -6,6 +6,7 @@ import '../config/viewport_preset.dart';
 import '../report/report_generator.dart';
 import '../report/sweep_result.dart';
 import '../runner/sweep_variant.dart';
+import 'machine_output.dart';
 
 class ParsedReport {
   final String markdown;
@@ -86,11 +87,7 @@ ParsedReport? loadResults(
 ParsedReport parseMachineOutput(String output, SweepConfig cfg) {
   final events = <Map<String, dynamic>>[];
   for (final line in output.split('\n')) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty || !trimmed.startsWith('{')) continue;
-    try {
-      events.add(jsonDecode(trimmed) as Map<String, dynamic>);
-    } catch (_) {}
+    events.addAll(parseMachineLine(line));
   }
 
   final testNames = <int, String>{};

@@ -5,6 +5,7 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:locale_sweep/src/cli/cli_parser.dart';
+import 'package:locale_sweep/src/cli/machine_output.dart';
 import 'package:locale_sweep/src/cli/package_discovery.dart';
 import 'package:locale_sweep/src/config/sweep_config.dart';
 import 'package:locale_sweep/src/report/github_reporter.dart';
@@ -292,8 +293,10 @@ Future<ParsedReport> _runInDirectory(
         .forEach((line) {
           stdoutBuf.writeln(line);
           if (verbose) stdout.writeln(line);
-          try {
-            final event = jsonDecode(line) as Map<String, dynamic>;
+          // Plain startup text and the JSON array line that
+          // `flutter test --machine` prints first both used to abort the run
+          // with an unhandled TypeError.
+          for (final event in parseMachineLine(line)) {
             if (event['type'] == 'done') completed = true;
             if (event['type'] == 'testDone' &&
                 event['hidden'] != true &&
@@ -301,8 +304,6 @@ Future<ParsedReport> _runInDirectory(
               finished++;
               if (!verbose) stdout.write('\r  $finished test(s) completed');
             }
-          } on FormatException {
-            // Flutter can emit non-JSON startup messages.
           }
         });
     final stderrDone = process.stderr.transform(utf8.decoder).forEach((data) {
