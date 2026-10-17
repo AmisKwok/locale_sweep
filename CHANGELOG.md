@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.2
 
 - **Fix crash on the `flutter test --machine` startup line** — the CLI parsed
   every stdout line as a JSON object, but `flutter test --machine` first prints a
