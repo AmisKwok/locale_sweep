@@ -8,6 +8,10 @@
   results or report. Both shapes are now decoded by one shared helper
   (`parseMachineLine` in `lib/src/cli/machine_output.dart`) that returns the
   event objects a line carries and ignores anything else. No public API change.
+- **`--flows` matches flow names** — `--flows login` now selects
+  `sweepTest('login', ...)` in any test file and runs only that flow, instead of
+  requiring a file named `login_test.dart`. File-name matching still works. When
+  nothing matches, the error lists the available flows.
 
 ## 0.6.1
 
