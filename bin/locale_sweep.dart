@@ -5,6 +5,7 @@ import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
 
 import 'package:locale_sweep/src/cli/cli_parser.dart';
+import 'package:locale_sweep/src/cli/flow_filter.dart';
 import 'package:locale_sweep/src/cli/machine_output.dart';
 import 'package:locale_sweep/src/cli/package_discovery.dart';
 import 'package:locale_sweep/src/config/sweep_config.dart';
@@ -237,22 +238,29 @@ Future<ParsedReport> _runInDirectory(
         .where((f) => f.path.endsWith('_test.dart'))
         .toList();
     final flows = args['flows'] as String?;
+    String? namePattern;
     if (flows != null) {
-      final names = flows.split(',').map((s) => s.trim()).toSet();
-      files = files
-          .where(
-            (f) => names.contains(
-              p.basename(f.path).replaceFirst(RegExp(r'_test\.dart$'), ''),
-            ),
-          )
-          .toList();
+      final names = flows
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      final selection = selectFlows({
+        for (final f in files) f.path: f.readAsStringSync(),
+      }, names);
+      if (selection.files.isEmpty) {
+        final available = selection.declaredFlows.toList()..sort();
+        throw StateError(
+          'No sweep flows match "$flows" in ${testDir.path}.'
+          '${available.isEmpty ? '' : ' Available flows: ${available.join(', ')}.'}',
+        );
+      }
+      files = selection.files.map(File.new).toList();
+      namePattern = selection.namePattern;
     }
     files.sort((a, b) => a.path.compareTo(b.path));
     if (files.isEmpty) {
-      throw StateError(
-        'No sweep test files match in ${testDir.path}'
-        '${flows == null ? '' : ' (flows: $flows)'}.',
-      );
+      throw StateError('No sweep test files found in ${testDir.path}.');
     }
     final runs = Directory(p.join(dir, '.locale_sweep', 'runs'))
       ..createSync(recursive: true);
@@ -264,6 +272,7 @@ Future<ParsedReport> _runInDirectory(
       if (updateGoldens) '--update-goldens',
       if (args['shards'] != null) '--total-shards=${args['shards']}',
       if (args['shards'] != null) '--shard-index=${args['shard-index'] ?? '0'}',
+      if (namePattern != null) '--name=$namePattern',
       ...files.map((f) => f.path),
     ];
     final verbose = args['verbose'] as bool;
