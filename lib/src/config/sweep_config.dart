@@ -35,6 +35,12 @@ class SweepConfig {
   /// Defaults to `'en'`.
   final String baseLocale;
 
+  /// ARB keys that are intentionally identical across locales.
+  ///
+  /// Only the `untranslated` check is exempted; missing keys and placeholder
+  /// mismatches for these keys are still reported.
+  final List<String> untranslatedAllowlist;
+
   const SweepConfig({
     this.locales = const ['en', 'de', 'ar', 'ja'],
     this.textScales = const [1.0, 2.0],
@@ -45,6 +51,7 @@ class SweepConfig {
     this.reportDir = '.locale_sweep/reports',
     this.arbDir,
     this.baseLocale = 'en',
+    this.untranslatedAllowlist = const [],
   });
 
   static const _knownKeys = {
@@ -57,6 +64,7 @@ class SweepConfig {
     'report_dir',
     'arb_dir',
     'base_locale',
+    'untranslated_allowlist',
   };
 
   /// Loads configuration from a YAML file, falling back to defaults.
@@ -108,6 +116,7 @@ class SweepConfig {
     _warnIfWrongType(path, yaml, 'arb_dir', 'string');
     _warnIfWrongType(path, yaml, 'tolerance', 'num');
     _warnIfWrongType(path, yaml, 'base_locale', 'string');
+    _warnIfWrongType(path, yaml, 'untranslated_allowlist', 'list');
 
     return _applyEnvOverrides(
       SweepConfig(
@@ -123,6 +132,8 @@ class SweepConfig {
         reportDir: _parseString(yaml['report_dir']) ?? '.locale_sweep/reports',
         arbDir: _parseString(yaml['arb_dir']),
         baseLocale: _parseString(yaml['base_locale']) ?? 'en',
+        untranslatedAllowlist:
+            _parseStringList(yaml['untranslated_allowlist']) ?? const [],
       ),
     );
   }
@@ -176,6 +187,13 @@ class SweepConfig {
       reportDir: env['LOCALE_SWEEP_REPORT_DIR'] ?? base.reportDir,
       arbDir: env['LOCALE_SWEEP_ARB_DIR'] ?? base.arbDir,
       baseLocale: env['LOCALE_SWEEP_BASE_LOCALE'] ?? base.baseLocale,
+      untranslatedAllowlist:
+          env['LOCALE_SWEEP_UNTRANSLATED_ALLOWLIST']
+              ?.split(',')
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList() ??
+          base.untranslatedAllowlist,
     );
   }
 

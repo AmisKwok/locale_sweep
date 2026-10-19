@@ -37,7 +37,9 @@ bool shouldFail(ParsedReport report, Set<String> failOn) {
       report.results.any((r) => r.hasTestFailure)) {
     return true;
   }
-  if (failOn.contains('all')) return report.failed > 0;
+  if (failOn.contains('all')) {
+    return report.failed > 0 || report.results.any((r) => r.hasTruncations);
+  }
   if (failOn.contains('none')) return false;
 
   for (final r in report.results) {

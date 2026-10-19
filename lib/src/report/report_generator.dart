@@ -26,7 +26,9 @@ class ReportGenerator {
       buf.writeln();
     }
 
-    if (summary.failed == 0 && summary.executionErrors.isEmpty) {
+    if (summary.failed == 0 &&
+        summary.executionErrors.isEmpty &&
+        summary.truncationCount == 0) {
       buf.writeln(
         '**All ${summary.total} variants passed** across ${summary.byLocale.length} locales and ${summary.byFlow.length} flows.',
       );
@@ -37,6 +39,12 @@ class ReportGenerator {
     if (summary.failed > 0) {
       buf.writeln(
         '**${summary.failed}/${summary.total} variants failed** across ${summary.byLocale.length} locales and ${summary.byFlow.length} flows.',
+      );
+      buf.writeln();
+    } else if (summary.truncationCount > 0) {
+      buf.writeln(
+        '**All ${summary.total} variants passed the gate** '
+        '(${summary.truncationCount} advisory truncation(s)).',
       );
       buf.writeln();
     } else {
@@ -59,7 +67,7 @@ class ReportGenerator {
     buf.writeln();
 
     for (final entry in summary.byFlow.entries) {
-      final failures = entry.value.where((r) => r.hasIssues).toList();
+      final failures = entry.value.where((r) => r.hasGatingIssues).toList();
       if (failures.isEmpty) continue;
 
       buf.writeln('### ${entry.key}');
@@ -109,6 +117,25 @@ class ReportGenerator {
       buf.writeln();
     }
 
+    final advisories = summary.results
+        .where((r) => r.hasTruncations)
+        .toList();
+    if (advisories.isNotEmpty) {
+      buf.writeln('## Advisory Truncations');
+      buf.writeln();
+      buf.writeln(
+        'These never fail the gate on their own. '
+        'Pass `--fail-on truncation` to promote them.',
+      );
+      buf.writeln();
+      for (final r in advisories) {
+        for (final t in r.truncations) {
+          buf.writeln('- ${r.flowName} · ${r.variant.displayLabel}: $t');
+        }
+      }
+      buf.writeln();
+    }
+
     buf.writeln('## Locale Summary');
     buf.writeln();
     buf.writeln(
@@ -120,7 +147,7 @@ class ReportGenerator {
 
     for (final entry in summary.byLocale.entries) {
       final results = entry.value;
-      final p = results.where((r) => !r.hasIssues).length;
+      final p = results.where((r) => !r.hasGatingIssues).length;
       final f = results.length - p;
       final o = results.fold(0, (sum, r) => sum + r.overflows.length);
       final a = results.fold(0, (sum, r) => sum + r.arbIssues.length);
@@ -238,7 +265,7 @@ class ReportGenerator {
       buf.writeln('<div class="card-grid">');
 
       for (final r in results) {
-        final status = r.hasIssues ? 'fail' : 'pass';
+        final status = r.hasGatingIssues ? 'fail' : 'pass';
         final locale = r.variant.locale;
         final brightness = r.variant.isDark ? 'dark' : 'light';
 
@@ -268,6 +295,11 @@ class ReportGenerator {
         buf.writeln(
           '<span class="badge badge-$status">${status == 'pass' ? 'PASS' : 'FAIL'}</span>',
         );
+        if (r.hasTruncations) {
+          buf.writeln(
+            '<span class="badge badge-advisory">ADVISORY</span>',
+          );
+        }
         if (r.variant.isDark) {
           buf.writeln('<span class="badge badge-dark">DARK</span>');
         }
@@ -343,7 +375,7 @@ class ReportGenerator {
     buf.writeln('<tbody>');
     for (final entry in summary.byLocale.entries) {
       final results = entry.value;
-      final p = results.where((r) => !r.hasIssues).length;
+      final p = results.where((r) => !r.hasGatingIssues).length;
       final f = results.length - p;
       final o = results.fold(0, (sum, r) => sum + r.overflows.length);
       final a = results.fold(0, (sum, r) => sum + r.arbIssues.length);
@@ -552,6 +584,7 @@ h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--tex
 .badge-dark { background: var(--surface2); color: var(--text2); }
 .badge-rtl { background: var(--accent-bg); color: var(--accent); }
 .badge-diff { background: var(--warn-bg); color: var(--warn); }
+.badge-advisory { background: var(--warn-bg); color: var(--warn); }
 
 .card-diff {
   margin-top: 0.4rem;

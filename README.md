@@ -145,6 +145,24 @@ sweepTest(
 
 LocaleSweep wraps the widget in a `Localizations` ancestor with your delegates, sets the locale per variant, and includes Material/Widgets fallback delegates automatically. Your screen's `AppLocalizations.of(context)` calls work as if it were inside a `MaterialApp`.
 
+### Passing the variant locale directly
+
+If your screens read the locale from `MaterialApp` (rather than an injected
+`Localizations` ancestor), use `builderWithVariant` to hand the variant's locale
+to your own app shell:
+
+```dart
+sweepTest(
+  'settings',
+  builderWithVariant: (variant) =>
+      MyApp(locale: parseLocale(variant.locale)),
+  locales: ['en', 'de', 'ar', 'ja'],
+);
+```
+
+This avoids relying on platform locale resolution, which depends on the host
+machine's locale list and can silently render the wrong language.
+
 ### Base locale
 
 By default, ARB analysis compares against `app_en.arb`. For non-English base locales:
@@ -289,6 +307,10 @@ dark_mode: true
 tolerance: 0.5
 arb_dir: lib/l10n
 base_locale: en
+# Values that are intentionally identical across locales (app name, language
+# self-names): exempt from the "untranslated" check, still checked for missing
+# keys and placeholder mismatches.
+untranslated_allowlist: [appName]
 screenshot_dir: .locale_sweep/screenshots
 report_dir: .locale_sweep/reports
 ```
@@ -313,6 +335,7 @@ LOCALE_SWEEP_LOCALES=en,de LOCALE_SWEEP_TOLERANCE=1.0 dart run locale_sweep run
 | `LOCALE_SWEEP_REPORT_DIR` | `report_dir` |
 | `LOCALE_SWEEP_ARB_DIR` | `arb_dir` |
 | `LOCALE_SWEEP_BASE_LOCALE` | `base_locale` |
+| `LOCALE_SWEEP_UNTRANSLATED_ALLOWLIST` | `untranslated_allowlist` (comma-separated) |
 
 ---
 
@@ -376,6 +399,10 @@ dart run locale_sweep run --fail-on all               # everything (default)
 ```
 
 Categories: `overflow`, `arb`, `golden`, `truncation`, `all`, `none`
+
+Truncations are advisory by default: they are reported but do not fail a direct
+`flutter test` run or count towards the failed-variant total. Use
+`--fail-on truncation` (or `--fail-on all`) to promote them.
 
 `--fail-on none` suppresses QA findings only. Compilation errors, broken test
 setup or callbacks, incomplete runs, and unreadable result files always return
@@ -447,7 +474,8 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | Parameter | Type | Default | Description |
 |:--|:--|:--|:--|
 | `flowName` | `String` | required | Identifies this flow in test labels and filenames |
-| `builder` | `Widget Function()` | required | The widget to render |
+| `builder` | `Widget Function()?` | required* | The widget to render |
+| `builderWithVariant` | `Widget Function(SweepVariant)?` | required* | Like `builder`, but receives the current variant (pass its locale directly to `MaterialApp`). Exactly one of `builder` / `builderWithVariant` must be provided |
 | `body` | `Future<void> Function(WidgetTester)?` | `null` | Interactions after the widget is pumped |
 | `variantBody` | `Future<void> Function(WidgetTester, SweepVariant)?` | `null` | Like `body`, but receives the current variant |
 | `locales` | `List<String>?` | from config | BCP-47 locale codes |
@@ -458,6 +486,7 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `skip` | `bool Function(SweepVariant)?` | `null` | Exclude variants from the matrix |
 | `arbDir` | `String?` | from config | Path to `.arb` files for static analysis |
 | `baseLocale` | `String?` | from config | Base locale for ARB analysis (default: `'en'`) |
+| `untranslatedAllowlist` | `List<String>?` | from config | ARB keys exempt from the `untranslated` check |
 | `localizationsDelegates` | `List<LocalizationsDelegate>?` | `null` | Wraps widget in `Localizations` for `AppLocalizations.of(context)` |
 | `tolerance` | `double?` | from config | Max pixel-diff % (0.0–100.0) |
 | `captureScreenshots` | `bool` | `true` | Save golden screenshots |

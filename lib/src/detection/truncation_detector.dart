@@ -39,9 +39,7 @@ class TruncationDetector {
     final text = paragraph.text.toPlainText();
     if (text.isEmpty) return;
 
-    final didExceed = paragraph.didExceedMaxLines;
-
-    if (didExceed) {
+    if (paragraph.didExceedMaxLines) {
       final maxWidth = paragraph.constraints.maxWidth;
       final intrinsic = paragraph.getMinIntrinsicWidth(double.infinity);
       issues.add(
@@ -57,23 +55,27 @@ class TruncationDetector {
       return;
     }
 
-    if (overflow == TextOverflow.ellipsis ||
-        overflow == TextOverflow.clip ||
-        overflow == TextOverflow.fade) {
-      final maxWidth = paragraph.constraints.maxWidth;
-      final intrinsic = paragraph.getMinIntrinsicWidth(double.infinity);
-      if (intrinsic > maxWidth) {
-        issues.add(
-          TruncationIssue(
-            text: text,
-            locale: locale,
-            overflowMode: overflow.name,
-            availableWidth: maxWidth,
-            desiredWidth: intrinsic,
-            maxLines: paragraph.maxLines,
-          ),
-        );
-      }
+    // When `maxLines` is null, Flutter wraps the text instead of truncating
+    // it, so comparing intrinsic width with the available width produces
+    // false positives for every long-but-wrappable paragraph.
+    if (paragraph.maxLines == null) return;
+
+    // `didExceedMaxLines` only covers line-count overflow. A fixed number of
+    // lines can still be truncated horizontally (e.g. `softWrap: false`).
+    if (overflow == TextOverflow.visible) return;
+    final maxWidth = paragraph.constraints.maxWidth;
+    final intrinsic = paragraph.getMinIntrinsicWidth(double.infinity);
+    if (intrinsic > maxWidth) {
+      issues.add(
+        TruncationIssue(
+          text: text,
+          locale: locale,
+          overflowMode: overflow.name,
+          availableWidth: maxWidth,
+          desiredWidth: intrinsic,
+          maxLines: paragraph.maxLines,
+        ),
+      );
     }
   }
 }

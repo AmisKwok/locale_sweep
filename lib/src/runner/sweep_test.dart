@@ -54,9 +54,15 @@ typedef SweepVariantBody =
 ///
 /// Overflow errors are captured and fail the variant after the result
 /// is recorded (so screenshots exist before failure).
+///
+/// Pass exactly one of [builder] or [builderWithVariant]. The latter receives
+/// the current [SweepVariant], so the builder can hand the variant's locale
+/// (or text scale, or viewport) directly to the widget under test instead of
+/// relying on platform locale resolution.
 void sweepTest(
   String flowName, {
-  required Widget Function() builder,
+  Widget Function()? builder,
+  Widget Function(SweepVariant variant)? builderWithVariant,
   SweepBody? body,
   SweepVariantBody? variantBody,
   SweepConfig? config,
@@ -68,6 +74,7 @@ void sweepTest(
   ThemeData? darkTheme,
   String? arbDir,
   String? baseLocale,
+  List<String>? untranslatedAllowlist,
   bool captureScreenshots = true,
   String? screenshotDir,
   bool Function(SweepVariant variant)? skip,
@@ -76,6 +83,13 @@ void sweepTest(
   Future<void> Function()? setUp,
   List<LocalizationsDelegate<dynamic>>? localizationsDelegates,
 }) {
+  if ((builder == null) == (builderWithVariant == null)) {
+    throw ArgumentError(
+      'sweepTest("$flowName") requires exactly one of '
+      'builder or builderWithVariant.',
+    );
+  }
+
   final cfg = config ?? SweepConfig.load();
   final effectiveLocales = locales ?? cfg.locales;
   final effectiveScales = textScales ?? cfg.textScales;
@@ -84,6 +98,8 @@ void sweepTest(
   final effectiveArbDir = arbDir ?? cfg.arbDir;
   final effectiveTolerance = tolerance ?? cfg.tolerance;
   final effectiveBaseLocale = baseLocale ?? cfg.baseLocale;
+  final effectiveUntranslatedAllowlist =
+      untranslatedAllowlist ?? cfg.untranslatedAllowlist;
   final effectiveScreenshotDir = screenshotDir ?? cfg.screenshotDir;
   final managedRun = Platform.environment['LOCALE_SWEEP_MANAGED_RUN'] == 'true';
   final resultsPath =
@@ -142,6 +158,7 @@ void sweepTest(
       arbDir: effectiveArbDir,
       locales: effectiveLocales,
       baseLocale: effectiveBaseLocale,
+      untranslatedAllowlist: effectiveUntranslatedAllowlist,
     );
   }
 
@@ -202,7 +219,9 @@ void sweepTest(
               ? resolvedDarkTheme
               : resolvedLightTheme;
 
-          Widget child = builder();
+          Widget child = builderWithVariant != null
+              ? builderWithVariant(variant)
+              : builder!();
           if (themeData != null) {
             child = Theme(data: themeData, child: child);
           }
