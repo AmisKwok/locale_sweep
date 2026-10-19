@@ -384,8 +384,9 @@ void main() {
           expect(html, contains('src="../$screenshot"'), reason: html);
         }
 
-        final merged =
-            File('${temporary.path}/merged/report.html').readAsStringSync();
+        final merged = File(
+          '${temporary.path}/merged/report.html',
+        ).readAsStringSync();
         expect(merged, contains('src="../apps/a/$screenshot"'), reason: merged);
         expect(merged, contains('src="../apps/b/$screenshot"'), reason: merged);
       },
