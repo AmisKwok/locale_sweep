@@ -163,6 +163,22 @@ sweepTest(
 This avoids relying on platform locale resolution, which depends on the host
 machine's locale list and can silently render the wrong language.
 
+### Capture-only screenshots
+
+Set `compareScreenshots: false` to write PNGs for the report without asserting
+against golden baselines. This is useful when screenshots are for diagnosis only
+(for example, under Flutter's Ahem test font, where pixel diffs are not
+meaningful):
+
+```dart
+sweepTest(
+  'settings',
+  builder: () => const SettingsScreen(),
+  captureScreenshots: true,
+  compareScreenshots: false,
+);
+```
+
 ### Base locale
 
 By default, ARB analysis compares against `app_en.arb`. For non-English base locales:
@@ -490,7 +506,8 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `untranslatedAllowlist` | `List<String>?` | from config | ARB keys exempt from the `untranslated` check |
 | `localizationsDelegates` | `List<LocalizationsDelegate>?` | `null` | Wraps widget in `Localizations` for `AppLocalizations.of(context)` |
 | `tolerance` | `double?` | from config | Max pixel-diff % (0.0–100.0) |
-| `captureScreenshots` | `bool` | `true` | Save golden screenshots |
+| `captureScreenshots` | `bool` | `true` | Save screenshots |
+| `compareScreenshots` | `bool` | `true` | Assert captured screenshots against golden baselines. Set `false` for capture-only (no golden assertions) |
 | `diffOutputDir` | `String` | `.locale_sweep/diffs` | Directory for diff images |
 | `setUp` | `Future<void> Function()?` | `null` | Runs once before the sweep group (e.g. load custom fonts) |
 | `screenshotDir` | `String` | from config | Directory for golden screenshots |

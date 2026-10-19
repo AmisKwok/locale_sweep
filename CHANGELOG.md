@@ -16,6 +16,13 @@
   to its builder, so callers can supply the variant locale directly instead of
   relying on an injected `Localizations` ancestor. Exactly one of `builder` or
   `builderWithVariant` is required.
+- **Report screenshots resolve locally** — results now record the actual
+  package-relative screenshot location (resolved through the golden
+  comparator's basedir; absolute configured paths stay absolute), and report
+  links are rewritten relative to the report output directory.
+- **Capture-only screenshots** — new `compareScreenshots` parameter (default
+  `true`). Set it to `false` with `captureScreenshots: true` to write PNGs for
+  reports without asserting against golden baselines.
 
 ## 0.6.2
 

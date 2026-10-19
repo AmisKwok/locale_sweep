@@ -176,7 +176,14 @@ Future<void> _runSweep(ArgResults args, {required bool updateGoldens}) async {
       updateGoldens: updateGoldens,
     );
     singleReport = report;
-    allResults.addAll(report.results);
+    // Results carry screenshot paths relative to their package directory.
+    // Rebase them to the CLI working directory so the merged report can link
+    // to files from every package.
+    allResults.addAll(
+      report.results.map(
+        (result) => _rebaseScreenshotPath(result, absoluteDir),
+      ),
+    );
     errors.addAll(report.executionErrors.map((e) => '$dir: $e'));
   }
   final report = packages == null
@@ -355,7 +362,9 @@ Future<ParsedReport> _runInDirectory(
     );
   }
   // Do not create a nonexistent input package just to write its error report.
-  if (Directory(dir).existsSync()) _writeReport(report, output);
+  if (Directory(dir).existsSync()) {
+    _writeReport(report, output, packageDir: dir);
+  }
   stdout.writeln(report.summary);
   for (final error in report.executionErrors) {
     stderr.writeln('Error: $error');
@@ -368,12 +377,44 @@ Future<ParsedReport> _runInDirectory(
   return report;
 }
 
-void _writeReport(ParsedReport report, String output) {
+void _writeReport(ParsedReport report, String output, {String? packageDir}) {
   Directory(output).createSync(recursive: true);
-  File(p.join(output, 'report.md')).writeAsStringSync(report.markdown);
+  // Screenshot paths in results are relative to the package directory, but
+  // the report is written to (often nested) `output`. Rewrite them so the
+  // HTML/Markdown image links resolve from the report's own location.
+  final base = p.relative(
+    p.absolute(packageDir ?? '.'),
+    from: p.absolute(output),
+  );
+  var html = report.html;
+  var markdown = report.markdown;
+  for (final result in report.results) {
+    final screenshot = result.screenshotPath;
+    if (screenshot == null || screenshot.isEmpty) continue;
+    final rewritten = p.posix.joinAll(
+      p.split(p.normalize(p.join(base, screenshot))),
+    );
+    html = html.replaceAll('src="$screenshot"', 'src="$rewritten"');
+    markdown = markdown.replaceAll(']($screenshot)', ']($rewritten)');
+  }
+  File(p.join(output, 'report.md')).writeAsStringSync(markdown);
   File(p.join(output, 'report.json')).writeAsStringSync(report.json);
-  File(p.join(output, 'report.html')).writeAsStringSync(report.html);
+  File(p.join(output, 'report.html')).writeAsStringSync(html);
   stdout.writeln('Report: ${p.join(output, 'report.html')}');
+}
+
+/// Rewrites a package-relative screenshot path to one relative to the CLI
+/// working directory.
+SweepResult _rebaseScreenshotPath(SweepResult result, String packageDir) {
+  final screenshot = result.screenshotPath;
+  if (screenshot == null || screenshot.isEmpty || p.isAbsolute(screenshot)) {
+    return result;
+  }
+  final absolute = p.normalize(p.join(packageDir, screenshot));
+  final rebased = p.posix.joinAll(
+    p.split(p.relative(absolute, from: p.absolute('.'))),
+  );
+  return result.copyWith(screenshotPath: rebased);
 }
 
 Future<void> _mergeShards(ArgResults args) async {

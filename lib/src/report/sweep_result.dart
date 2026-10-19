@@ -57,6 +57,21 @@ class SweepResult {
     this.diff,
   });
 
+  /// Creates a copy with an optional replacement [screenshotPath].
+  SweepResult copyWith({String? screenshotPath}) => SweepResult(
+    flowName: flowName,
+    variant: variant,
+    passed: passed,
+    overflows: overflows,
+    arbIssues: arbIssues,
+    truncations: truncations,
+    screenshotPath: screenshotPath ?? this.screenshotPath,
+    errorMessage: errorMessage,
+    failureKind: failureKind,
+    duration: duration,
+    diff: diff,
+  );
+
   /// Whether any overflow errors were captured.
   bool get hasOverflows => overflows.isNotEmpty;
 
