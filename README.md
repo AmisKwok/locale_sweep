@@ -400,9 +400,10 @@ dart run locale_sweep run --fail-on all               # everything (default)
 
 Categories: `overflow`, `arb`, `golden`, `truncation`, `all`, `none`
 
-Truncations are advisory by default: they are reported but do not fail a direct
+Truncations are advisory: they are reported but do not fail a direct
 `flutter test` run or count towards the failed-variant total. Use
-`--fail-on truncation` (or `--fail-on all`) to promote them.
+`--fail-on truncation` to promote them; note that `--fail-on all` (the CLI
+default) already includes truncations.
 
 `--fail-on none` suppresses QA findings only. Compilation errors, broken test
 setup or callbacks, incomplete runs, and unreadable result files always return

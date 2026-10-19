@@ -43,8 +43,8 @@ class ReportGenerator {
       buf.writeln();
     } else if (summary.truncationCount > 0) {
       buf.writeln(
-        '**All ${summary.total} variants passed the gate** '
-        '(${summary.truncationCount} advisory truncation(s)).',
+        '**All ${summary.total} variants passed the overflow/ARB checks** '
+        '(${summary.truncationCount} truncation(s) recorded).',
       );
       buf.writeln();
     } else {
@@ -117,15 +117,13 @@ class ReportGenerator {
       buf.writeln();
     }
 
-    final advisories = summary.results
-        .where((r) => r.hasTruncations)
-        .toList();
+    final advisories = summary.advisories;
     if (advisories.isNotEmpty) {
       buf.writeln('## Advisory Truncations');
       buf.writeln();
       buf.writeln(
-        'These never fail the gate on their own. '
-        'Pass `--fail-on truncation` to promote them.',
+        'Advisory: these fail the run only with `--fail-on truncation` or '
+        '`--fail-on all` (the CLI default).',
       );
       buf.writeln();
       for (final r in advisories) {
@@ -212,6 +210,13 @@ class ReportGenerator {
     _htmlSummaryCard(buf, '${summary.arbIssueCount}', 'ARB Issues', 'warn');
     _htmlSummaryCard(buf, '${summary.truncationCount}', 'Truncations', 'warn');
     buf.writeln('</section>');
+    if (summary.truncationCount > 0) {
+      buf.writeln(
+        '<p class="note">Truncations are advisory: they fail the run only '
+        'with <code>--fail-on truncation</code> or <code>--fail-on all</code> '
+        '(the CLI default).</p>',
+      );
+    }
 
     // Filters
     final locales = summary.byLocale.keys.toList()..sort();
@@ -296,9 +301,7 @@ class ReportGenerator {
           '<span class="badge badge-$status">${status == 'pass' ? 'PASS' : 'FAIL'}</span>',
         );
         if (r.hasTruncations) {
-          buf.writeln(
-            '<span class="badge badge-advisory">ADVISORY</span>',
-          );
+          buf.writeln('<span class="badge badge-advisory">ADVISORY</span>');
         }
         if (r.variant.isDark) {
           buf.writeln('<span class="badge badge-dark">DARK</span>');
@@ -585,6 +588,12 @@ h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--tex
 .badge-rtl { background: var(--accent-bg); color: var(--accent); }
 .badge-diff { background: var(--warn-bg); color: var(--warn); }
 .badge-advisory { background: var(--warn-bg); color: var(--warn); }
+
+.note {
+  font-size: 0.8rem;
+  color: var(--text2);
+  margin: 0.5rem 0 1rem;
+}
 
 .card-diff {
   margin-top: 0.4rem;

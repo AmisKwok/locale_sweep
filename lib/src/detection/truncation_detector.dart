@@ -55,10 +55,11 @@ class TruncationDetector {
       return;
     }
 
-    // When `maxLines` is null, Flutter wraps the text instead of truncating
-    // it, so comparing intrinsic width with the available width produces
-    // false positives for every long-but-wrappable paragraph.
-    if (paragraph.maxLines == null) return;
+    // Wrapping text without `maxLines` is not truncated: Flutter lays it out
+    // on as many lines as needed. Keep checking `softWrap: false` without
+    // `maxLines` (a common AppBar title pattern), where the single line can
+    // still be clipped horizontally.
+    if (paragraph.maxLines == null && paragraph.softWrap) return;
 
     // `didExceedMaxLines` only covers line-count overflow. A fixed number of
     // lines can still be truncated horizontally (e.g. `softWrap: false`).

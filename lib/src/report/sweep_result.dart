@@ -180,9 +180,8 @@ class SweepRunSummary {
       results.where((r) => r.hasGatingIssues).toList();
 
   /// Results that only carry advisory findings (currently truncations).
-  List<SweepResult> get advisories => results
-      .where((r) => !r.hasGatingIssues && r.hasTruncations)
-      .toList();
+  List<SweepResult> get advisories =>
+      results.where((r) => !r.hasGatingIssues && r.hasTruncations).toList();
 
   Map<String, List<SweepResult>> get byFlow {
     final map = <String, List<SweepResult>>{};

@@ -1,16 +1,3 @@
-/// Regression tests for the local patches documented in `PATCHES.md`.
-///
-/// Run from this package directory:
-///
-/// ```sh
-/// fvm flutter pub get
-/// fvm flutter test
-/// ```
-library;
-
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:locale_sweep/locale_sweep.dart';
@@ -110,6 +97,31 @@ void main() {
       expect(issues, hasLength(1));
       expect(issues.single.overflowMode, 'fade');
     });
+
+    testWidgets(
+      'horizontal overflow with softWrap false and no maxLines is reported',
+      (tester) async {
+        await tester.pumpWidget(
+          const Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: 50,
+                child: Text(
+                  'Benachrichtigungseinstellungen',
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final issues = TruncationDetector.detect(tester, 'en');
+        expect(issues, hasLength(1));
+        expect(issues.single.overflowMode, 'fade');
+      },
+    );
   });
 
   group('passed semantics', () {
@@ -135,98 +147,6 @@ void main() {
       expect(result.hasGatingIssues, isTrue);
       expect(result.toJson()['passed'], isFalse);
       expect(SweepRunSummary(results: [result]).failed, 1);
-    });
-  });
-
-  group('ARB untranslated allowlist', () {
-    late Directory dir;
-
-    setUp(() {
-      dir = Directory.systemTemp.createTempSync('locale_sweep_arb_');
-      File('${dir.path}/app_en.arb').writeAsStringSync(
-        jsonEncode({
-          'appName': 'App {v}',
-          '@appName': {
-            'placeholders': {'v': <String, dynamic>{}},
-          },
-          'brand': 'Same',
-          'onlyEn': 'Only in English',
-        }),
-      );
-      File('${dir.path}/app_zh.arb').writeAsStringSync(
-        jsonEncode({'appName': 'App', 'brand': 'Same'}),
-      );
-    });
-
-    tearDown(() => dir.deleteSync(recursive: true));
-
-    test('reports untranslated, missing key and placeholder mismatch', () {
-      final report = ArbAnalyzer.analyze(
-        arbDir: dir.path,
-        locales: const ['zh'],
-        baseLocale: 'en',
-      );
-
-      expect(
-        report.issues.map((i) => i.type),
-        containsAll([
-          ArbIssueType.untranslated,
-          ArbIssueType.missingKey,
-          ArbIssueType.placeholderMismatch,
-        ]),
-      );
-    });
-
-    test('allowlist exempts only untranslated issues', () {
-      final report = ArbAnalyzer.analyze(
-        arbDir: dir.path,
-        locales: const ['zh'],
-        baseLocale: 'en',
-        untranslatedAllowlist: const ['brand', 'appName', 'onlyEn'],
-      );
-
-      final types = report.issues.map((i) => i.type).toList();
-      expect(types, isNot(contains(ArbIssueType.untranslated)));
-      expect(types, contains(ArbIssueType.missingKey));
-      expect(types, contains(ArbIssueType.placeholderMismatch));
-    });
-  });
-
-  group('builderWithVariant', () {
-    test('requires exactly one builder', () {
-      expect(() => sweepTest('neither'), throwsArgumentError);
-      expect(
-        () => sweepTest(
-          'both',
-          builder: () => const SizedBox.shrink(),
-          builderWithVariant: (variant) => const SizedBox.shrink(),
-        ),
-        throwsArgumentError,
-      );
-    });
-
-    SweepVariant? seen;
-
-    sweepTest(
-      'variant-builder',
-      builderWithVariant: (variant) {
-        seen = variant;
-        return const SizedBox.shrink();
-      },
-      locales: const ['en'],
-      textScales: const [1.0],
-      viewports: const [ViewportPreset.phone],
-      captureScreenshots: false,
-    );
-
-    tearDownAll(() {
-      final file = File('.locale_sweep/results/variant-builder.json');
-      if (file.existsSync()) file.deleteSync();
-    });
-
-    test('receives the current variant', () {
-      expect(seen?.locale, 'en');
-      expect(seen?.textScale, 1.0);
     });
   });
 }

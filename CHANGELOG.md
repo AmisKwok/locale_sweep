@@ -7,7 +7,8 @@
 - **Truncations are advisory in pass/fail state** — `SweepResult.passed`,
   `SweepRunSummary.passed`, JSON output, and report badges are driven by
   overflows, ARB issues and execution errors. Truncations are labelled
-  `ADVISORY`; `--fail-on truncation` (or `all`) still promotes them.
+  `ADVISORY`; `--fail-on truncation` promotes them, and `--fail-on all` (the
+  CLI default) already includes them.
 - **`untranslated_allowlist` config** — exempt intentionally identical values
   (app names, language self-names) from the ARB `untranslated` check. Missing
   keys and placeholder mismatches are still reported.
