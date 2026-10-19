@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 import '../config/sweep_config.dart';
 import '../config/viewport_preset.dart';
@@ -272,8 +273,12 @@ void sweepTest(
           if (frameworkError != null) throw frameworkError;
 
           if (captureScreenshots) {
-            screenshotPath =
+            final goldenKey =
                 '$effectiveScreenshotDir/${variant.screenshotPath(flowName)}';
+            // Golden keys resolve relative to the test file's directory.
+            // Store the package-relative location so reports can link to the
+            // file that was actually written.
+            screenshotPath = _resolveScreenshotPath(goldenKey);
 
             SweepGoldenComparator? sweepComparator;
             final originalComparator = goldenFileComparator;
@@ -289,7 +294,7 @@ void sweepTest(
             try {
               await expectLater(
                 find.byType(Directionality).first,
-                matchesGoldenFile(screenshotPath),
+                matchesGoldenFile(goldenKey),
               );
             } on TestFailure {
               failureKind = SweepFailureKind.golden;
@@ -349,6 +354,21 @@ void sweepTest(
       });
     }
   });
+}
+
+/// Resolves a golden key to a package-relative path.
+///
+/// [LocalFileComparator] resolves golden keys relative to the test file's
+/// directory, which is not the package root when tests live in a subdirectory
+/// (e.g. `test/sweep/`). Reports are written relative to the package root, so
+/// record the resolved location instead of the raw golden key.
+String _resolveScreenshotPath(String path) {
+  if (p.isAbsolute(path)) return path;
+  final comparator = goldenFileComparator;
+  if (comparator is! LocalFileComparator) return path;
+  final resolved = comparator.basedir.resolve(path).toFilePath();
+  final relative = p.relative(resolved, from: Directory.current.path);
+  return p.posix.joinAll(p.split(relative));
 }
 
 /// Parses a BCP-47 locale string into a [Locale].

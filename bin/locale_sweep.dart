@@ -370,9 +370,24 @@ Future<ParsedReport> _runInDirectory(
 
 void _writeReport(ParsedReport report, String output) {
   Directory(output).createSync(recursive: true);
-  File(p.join(output, 'report.md')).writeAsStringSync(report.markdown);
+  // Screenshot paths in results are relative to the package directory, but
+  // the report is written to (often nested) `output`. Rewrite them so the
+  // HTML/Markdown image links resolve from the report's own location.
+  final base = p.relative(p.absolute('.'), from: p.absolute(output));
+  var html = report.html;
+  var markdown = report.markdown;
+  for (final result in report.results) {
+    final screenshot = result.screenshotPath;
+    if (screenshot == null || screenshot.isEmpty) continue;
+    final rewritten = p.posix.joinAll(
+      p.split(p.normalize(p.join(base, screenshot))),
+    );
+    html = html.replaceAll('src="$screenshot"', 'src="$rewritten"');
+    markdown = markdown.replaceAll(']($screenshot)', ']($rewritten)');
+  }
+  File(p.join(output, 'report.md')).writeAsStringSync(markdown);
   File(p.join(output, 'report.json')).writeAsStringSync(report.json);
-  File(p.join(output, 'report.html')).writeAsStringSync(report.html);
+  File(p.join(output, 'report.html')).writeAsStringSync(html);
   stdout.writeln('Report: ${p.join(output, 'report.html')}');
 }
 
