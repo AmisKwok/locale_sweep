@@ -66,13 +66,20 @@ class SweepResult {
   /// Whether any text was silently truncated.
   bool get hasTruncations => truncations.isNotEmpty;
 
-  /// Whether this variant has any issues at all.
+  /// Whether this variant has any findings, including advisory ones.
   bool get hasIssues =>
       hasOverflows ||
       hasArbIssues ||
       hasTruncations ||
       !passed ||
       errorMessage != null;
+
+  /// Whether this variant failed a gating check.
+  ///
+  /// Truncations are advisory: they are reported (and can be opted into with
+  /// `--fail-on truncation`) but they never fail a variant on their own.
+  bool get hasGatingIssues =>
+      hasOverflows || hasArbIssues || !passed || errorMessage != null;
 
   /// Unexpected failures cannot be suppressed by a QA category filter.
   bool get hasTestFailure =>
@@ -95,7 +102,7 @@ class SweepResult {
     'viewportHeight': variant.viewport.height,
     'brightness': variant.isDark ? 'dark' : 'light',
     'rtl': variant.isRtl,
-    'passed': !hasIssues,
+    'passed': !hasGatingIssues,
     'overflows': overflows.map((e) => e.toJson()).toList(),
     'arbIssues': arbIssues.map((e) => e.toJson()).toList(),
     'truncations': truncations.map((e) => e.toJson()).toList(),
@@ -160,7 +167,7 @@ class SweepRunSummary {
     : timestamp = DateTime.now();
 
   int get total => results.length;
-  int get passed => results.where((r) => r.passed && !r.hasIssues).length;
+  int get passed => results.where((r) => !r.hasGatingIssues).length;
   int get failed => total - passed;
   int get overflowCount =>
       results.fold(0, (sum, r) => sum + r.overflows.length);
@@ -169,7 +176,12 @@ class SweepRunSummary {
   int get truncationCount =>
       results.fold(0, (sum, r) => sum + r.truncations.length);
 
-  List<SweepResult> get failures => results.where((r) => r.hasIssues).toList();
+  List<SweepResult> get failures =>
+      results.where((r) => r.hasGatingIssues).toList();
+
+  /// Results that only carry advisory findings (currently truncations).
+  List<SweepResult> get advisories =>
+      results.where((r) => !r.hasGatingIssues && r.hasTruncations).toList();
 
   Map<String, List<SweepResult>> get byFlow {
     final map = <String, List<SweepResult>>{};

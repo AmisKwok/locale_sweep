@@ -9,10 +9,16 @@ import 'package:path/path.dart' as p;
 /// ARB files against the base locale.
 class ArbAnalyzer {
   /// Analyzes ARB files in [arbDir] for missing keys and placeholder issues.
+  ///
+  /// Keys listed in [untranslatedAllowlist] are exempt from the
+  /// `untranslated` check (for values that are intentionally identical across
+  /// locales, such as app names or language self-names). Missing keys and
+  /// placeholder mismatches are still reported for those keys.
   static ArbReport analyze({
     required String arbDir,
     List<String> locales = const ['en', 'de', 'ar', 'ja'],
     String baseLocale = 'en',
+    List<String> untranslatedAllowlist = const [],
   }) {
     final dir = Directory(arbDir);
     if (!dir.existsSync()) {
@@ -104,7 +110,10 @@ class ArbAnalyzer {
         final value = arb[key];
         final baseValue = baseArb[key];
 
-        if (value is String && baseValue is String && value == baseValue) {
+        if (value is String &&
+            baseValue is String &&
+            value == baseValue &&
+            !untranslatedAllowlist.contains(key)) {
           issues.add(
             ArbIssue(
               type: ArbIssueType.untranslated,

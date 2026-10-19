@@ -1,3 +1,22 @@
+## Unreleased
+
+- **Truncation detection no longer reports wrapping text** — paragraphs without
+  `maxLines` wrap instead of truncating, so the intrinsic-width fallback now only
+  applies when `maxLines` is set. Single-line horizontal truncation
+  (`softWrap: false`) is still detected.
+- **Truncations are advisory in pass/fail state** — `SweepResult.passed`,
+  `SweepRunSummary.passed`, JSON output, and report badges are driven by
+  overflows, ARB issues and execution errors. Truncations are labelled
+  `ADVISORY`; `--fail-on truncation` promotes them, and `--fail-on all` (the
+  CLI default) already includes them.
+- **`untranslated_allowlist` config** — exempt intentionally identical values
+  (app names, language self-names) from the ARB `untranslated` check. Missing
+  keys and placeholder mismatches are still reported.
+- **`builderWithVariant`** — `sweepTest` can now pass the current `SweepVariant`
+  to its builder, so callers can supply the variant locale directly instead of
+  relying on an injected `Localizations` ancestor. Exactly one of `builder` or
+  `builderWithVariant` is required.
+
 ## 0.6.2
 
 - **Fix crash on the `flutter test --machine` startup line** — the CLI parsed
