@@ -63,7 +63,7 @@ sweepTest(
 
 ```yaml
 dev_dependencies:
-  locale_sweep: ^0.6.2
+  locale_sweep: ^0.7.0
 ```
 
 ### 2. Write a sweep test
@@ -540,4 +540,4 @@ Custom: `ViewportPreset(name: '1280x800', width: 1280, height: 800)`
 
 ---
 
-329 tests across 17 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
+369 tests across 23 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).

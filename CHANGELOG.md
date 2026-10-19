@@ -1,5 +1,9 @@
-## Unreleased
+## 0.7.0
 
+- **Behavior change: truncation-only variants now report `passed: true`** in
+  `report.json` and count as passed in report summaries. CLI exit codes are
+  unchanged — `--fail-on all` (the default) and `--fail-on truncation` still
+  fail on truncations. Update custom tooling that reads `passed` from the JSON.
 - **Truncation detection no longer reports wrapping text** — paragraphs without
   `maxLines` wrap instead of truncating, so the intrinsic-width fallback now only
   applies when `maxLines` is set. Single-line horizontal truncation
@@ -23,6 +27,8 @@
 - **Capture-only screenshots** — new `compareScreenshots` parameter (default
   `true`). Set it to `false` with `captureScreenshots: true` to write PNGs for
   reports without asserting against golden baselines.
+
+Thanks to @jeromexiong for the contributions in this release.
 
 ## 0.6.2
 
