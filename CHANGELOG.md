@@ -20,6 +20,9 @@
   package-relative screenshot location (resolved through the golden
   comparator's basedir; absolute configured paths stay absolute), and report
   links are rewritten relative to the report output directory.
+- **Capture-only screenshots** — new `compareScreenshots` parameter (default
+  `true`). Set it to `false` with `captureScreenshots: true` to write PNGs for
+  reports without asserting against golden baselines.
 
 ## 0.6.2
 

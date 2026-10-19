@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -60,6 +61,11 @@ typedef SweepVariantBody =
 /// the current [SweepVariant], so the builder can hand the variant's locale
 /// (or text scale, or viewport) directly to the widget under test instead of
 /// relying on platform locale resolution.
+///
+/// When [captureScreenshots] is true, set [compareScreenshots] to false to
+/// write PNGs for reports without asserting against golden baselines. This is
+/// useful when screenshots are for diagnosis only and pixel diffs would be
+/// noisy (for example, under Flutter's Ahem test font).
 void sweepTest(
   String flowName, {
   Widget Function()? builder,
@@ -77,6 +83,7 @@ void sweepTest(
   String? baseLocale,
   List<String>? untranslatedAllowlist,
   bool captureScreenshots = true,
+  bool compareScreenshots = true,
   String? screenshotDir,
   bool Function(SweepVariant variant)? skip,
   double? tolerance,
@@ -280,29 +287,33 @@ void sweepTest(
             // file that was actually written.
             screenshotPath = _resolveScreenshotPath(goldenKey);
 
-            SweepGoldenComparator? sweepComparator;
-            final originalComparator = goldenFileComparator;
-            if (effectiveTolerance > 0) {
-              sweepComparator = SweepGoldenComparator(
-                delegate: originalComparator,
-                tolerance: effectiveTolerance,
-                diffOutputDir: diffOutputDir,
-              );
-              goldenFileComparator = sweepComparator;
-            }
+            if (!compareScreenshots) {
+              await _writeScreenshot(tester, screenshotPath);
+            } else {
+              SweepGoldenComparator? sweepComparator;
+              final originalComparator = goldenFileComparator;
+              if (effectiveTolerance > 0) {
+                sweepComparator = SweepGoldenComparator(
+                  delegate: originalComparator,
+                  tolerance: effectiveTolerance,
+                  diffOutputDir: diffOutputDir,
+                );
+                goldenFileComparator = sweepComparator;
+              }
 
-            try {
-              await expectLater(
-                find.byType(Directionality).first,
-                matchesGoldenFile(goldenKey),
-              );
-            } on TestFailure {
-              failureKind = SweepFailureKind.golden;
-              rethrow;
-            } finally {
-              if (sweepComparator != null) {
-                goldenFileComparator = originalComparator;
-                diffResult = sweepComparator.lastDiffResult;
+              try {
+                await expectLater(
+                  find.byType(Directionality).first,
+                  matchesGoldenFile(goldenKey),
+                );
+              } on TestFailure {
+                failureKind = SweepFailureKind.golden;
+                rethrow;
+              } finally {
+                if (sweepComparator != null) {
+                  goldenFileComparator = originalComparator;
+                  diffResult = sweepComparator.lastDiffResult;
+                }
               }
             }
           }
@@ -354,6 +365,32 @@ void sweepTest(
       });
     }
   });
+}
+
+/// Writes the rendered widget tree to [path] without comparing it to a
+/// golden baseline.
+Future<void> _writeScreenshot(WidgetTester tester, String path) async {
+  final element = tester.element(find.byType(Directionality).first);
+  final bytes = await tester.runAsync(() async {
+    final image = await _captureImage(element);
+    return image.toByteData(format: ui.ImageByteFormat.png);
+  });
+  if (bytes == null) {
+    throw StateError('Failed to capture screenshot for "$path".');
+  }
+  final file = File(path);
+  file.parent.createSync(recursive: true);
+  file.writeAsBytesSync(bytes.buffer.asUint8List());
+}
+
+/// Captures the nearest repaint boundary above [element].
+Future<ui.Image> _captureImage(Element element) {
+  var renderObject = element.renderObject!;
+  while (!renderObject.isRepaintBoundary) {
+    renderObject = renderObject.parent!;
+  }
+  final layer = renderObject.debugLayer! as OffsetLayer;
+  return layer.toImage(renderObject.paintBounds);
 }
 
 /// Resolves a golden key to a package-relative path.
