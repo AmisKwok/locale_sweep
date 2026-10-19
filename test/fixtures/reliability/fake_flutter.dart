@@ -44,6 +44,9 @@ void main(List<String> args) {
     result['error'] = 'Golden mismatch';
     result['failureKind'] = 'golden';
   }
+  if (mode == 'screenshot') {
+    result['screenshot'] = '.locale_sweep/screenshots/current_de_393x852.png';
+  }
   if (mode == 'overflow') {
     result['passed'] = false;
     result['overflows'] = [

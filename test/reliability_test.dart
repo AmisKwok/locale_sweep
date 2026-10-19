@@ -358,6 +358,41 @@ void main() {
     );
 
     test(
+      'monorepo reports keep screenshot links relative to each package',
+      () async {
+        final a = '${temporary.path}/apps/a';
+        final b = '${temporary.path}/apps/b';
+        await prepareFakePackage(a);
+        await prepareFakePackage(b);
+
+        final run = await cli([
+          'run',
+          '--packages',
+          'apps/a,apps/b',
+          '--flows',
+          'current',
+          '--output',
+          'merged',
+          '--fail-on',
+          'none',
+        ], mode: 'screenshot');
+        expect(run.exitCode, 0, reason: '${run.stderr}');
+
+        const screenshot = '.locale_sweep/screenshots/current_de_393x852.png';
+        for (final package in [a, b]) {
+          final html = File('$package/merged/report.html').readAsStringSync();
+          expect(html, contains('src="../$screenshot"'), reason: html);
+        }
+
+        final merged =
+            File('${temporary.path}/merged/report.html').readAsStringSync();
+        expect(merged, contains('src="../apps/a/$screenshot"'), reason: merged);
+        expect(merged, contains('src="../apps/b/$screenshot"'), reason: merged);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
       'merge preserves execution errors and fails for missing or corrupt inputs',
       () async {
         await prepareFakePackage(temporary.path);
