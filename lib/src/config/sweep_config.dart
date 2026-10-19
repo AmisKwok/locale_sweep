@@ -41,6 +41,13 @@ class SweepConfig {
   /// mismatches for these keys are still reported.
   final List<String> untranslatedAllowlist;
 
+  /// Raw declarative ignore rules parsed from `locale_sweep.yaml`
+  /// (`truncation_ignore:`). Each entry is a map with optional keys
+  /// `max_lines`, `overflow`, `text_regex` (see [TruncationIgnores.fromConfig]).
+  /// Kept as raw maps here so [SweepConfig] stays free of the Flutter widget
+  /// dependency; predicates are built lazily by the runner.
+  final List<Map<String, dynamic>>? truncationIgnoreRaw;
+
   const SweepConfig({
     this.locales = const ['en', 'de', 'ar', 'ja'],
     this.textScales = const [1.0, 2.0],
@@ -52,6 +59,7 @@ class SweepConfig {
     this.arbDir,
     this.baseLocale = 'en',
     this.untranslatedAllowlist = const [],
+    this.truncationIgnoreRaw,
   });
 
   static const _knownKeys = {
@@ -65,6 +73,7 @@ class SweepConfig {
     'arb_dir',
     'base_locale',
     'untranslated_allowlist',
+    'truncation_ignore',
   };
 
   /// Loads configuration from a YAML file, falling back to defaults.
@@ -117,6 +126,7 @@ class SweepConfig {
     _warnIfWrongType(path, yaml, 'tolerance', 'num');
     _warnIfWrongType(path, yaml, 'base_locale', 'string');
     _warnIfWrongType(path, yaml, 'untranslated_allowlist', 'list');
+    _warnIfWrongType(path, yaml, 'truncation_ignore', 'list');
 
     return _applyEnvOverrides(
       SweepConfig(
@@ -134,8 +144,18 @@ class SweepConfig {
         baseLocale: _parseString(yaml['base_locale']) ?? 'en',
         untranslatedAllowlist:
             _parseStringList(yaml['untranslated_allowlist']) ?? const [],
+        truncationIgnoreRaw: _parseIgnoreRules(yaml['truncation_ignore']),
       ),
     );
+  }
+
+  /// Parses the `truncation_ignore` YAML list into raw rule maps.
+  static List<Map<String, dynamic>>? _parseIgnoreRules(dynamic value) {
+    if (value is! YamlList) return null;
+    return value
+        .whereType<YamlMap>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
   }
 
   static void _warnIfWrongType(
@@ -194,6 +214,7 @@ class SweepConfig {
               .where((s) => s.isNotEmpty)
               .toList() ??
           base.untranslatedAllowlist,
+      truncationIgnoreRaw: base.truncationIgnoreRaw,
     );
   }
 

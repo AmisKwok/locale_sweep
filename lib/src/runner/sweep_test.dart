@@ -90,6 +90,7 @@ void sweepTest(
   String diffOutputDir = '.locale_sweep/diffs',
   Future<void> Function()? setUp,
   List<LocalizationsDelegate<dynamic>>? localizationsDelegates,
+  List<TruncationIgnore>? ignoreTruncation,
 }) {
   if ((builder == null) == (builderWithVariant == null)) {
     throw ArgumentError(
@@ -192,6 +193,13 @@ void sweepTest(
 
     tearDownAll(writeResults);
 
+    // Build the ignore predicates once so that invalid-rule warnings are
+    // printed a single time instead of once per variant.
+    final effectiveIgnores = <TruncationIgnore>[
+      ...?cfg.truncationIgnoreRaw?.map(TruncationIgnores.fromConfig),
+      ...?ignoreTruncation,
+    ];
+
     for (final variant in variants) {
       final shouldSkip = skip != null && skip(variant);
       testWidgets('$flowName [${variant.displayLabel}]', skip: shouldSkip, (
@@ -274,7 +282,11 @@ void sweepTest(
             await tester.pumpAndSettle();
           }
 
-          truncations = TruncationDetector.detect(tester, variant.locale);
+          truncations = TruncationDetector.detect(
+            tester,
+            variant.locale,
+            effectiveIgnores,
+          );
 
           final frameworkError = tester.takeException();
           if (frameworkError != null) throw frameworkError;
