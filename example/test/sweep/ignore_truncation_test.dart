@@ -7,15 +7,10 @@ import 'package:locale_sweep/locale_sweep.dart';
 /// `maxLines: 1` + `ellipsis` — this is by design, not a localization bug,
 /// so we don't want it flagged by `--fail-on truncation`.
 ///
-/// The ignore rules come ENTIRELY from `example/locale_sweep.yaml`
-/// (`truncation_ignore:`), proving the declarative YAML path works without any
-/// Dart code. Equivalent inline form (commented, not used here):
-/// ```dart
-/// ignoreTruncation: [
-///   TruncationIgnores.byMaxLines(2),
-///   TruncationIgnores.byText(RegExp(r'^(RCP-|INV-)')),
-/// ],
-/// ```
+/// The rules are passed inline so they apply to this flow only. The
+/// equivalent global YAML form is shown (commented out) under
+/// `truncation_ignore:` in `example/locale_sweep.yaml`; enabling it there
+/// would also hide truncations in the other example flows.
 void main() {
   sweepTest(
     'ignore_intentional_truncation',
@@ -26,6 +21,10 @@ void main() {
     locales: ['en'],
     textScales: [1.0, 2.0],
     viewports: [ViewportPreset.phone],
+    ignoreTruncation: [
+      TruncationIgnores.byMaxLines(2),
+      TruncationIgnores.byText(RegExp(r'^(RCP-|INV-)')),
+    ],
     builder: () => Directionality(
       textDirection: TextDirection.ltr,
       child: Material(

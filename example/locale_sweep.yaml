@@ -21,10 +21,11 @@ arb_dir: lib/l10n
 screenshot_dir: .locale_sweep/screenshots
 report_dir: .locale_sweep/reports
 
-# Ignore intentional truncations (by-design ellipsis/clip list rows).
-# Applied globally; see example/test/sweep/ignore_truncation_test.dart
-# for the equivalent Dart `ignoreTruncation` form.
-truncation_ignore:
+# Ignore intentional truncations (by-design ellipsis/clip list rows) for every
+# flow. Left commented out because the example flows contain deliberate
+# truncation bugs; see example/test/sweep/ignore_truncation_test.dart for the
+# per-flow Dart `ignoreTruncation` form.
+# truncation_ignore:
   # - max_lines: 2                  # ignore list-row ellipsis (maxLines <= 2)
   # - text_regex: "^(RCP-|INV-)"    # ignore known ID/brand patterns
   # - overflow: ellipsis          # ignore a specific overflow mode
