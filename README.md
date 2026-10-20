@@ -333,6 +333,50 @@ report_dir: .locale_sweep/reports
 
 Any parameter passed directly to `sweepTest()` overrides the YAML config for that flow. Config validation warns about typos and type mismatches on stderr.
 
+### Ignoring intentional truncations
+
+Some truncations are by design — list-row cells clamp long data with
+`maxLines: 1/2` + `ellipsis`, or a known ID pattern (`RCP-…`) is meant to be cut
+off. Use declarative YAML rules to exclude them from reports and `--fail-on truncation`:
+
+```yaml
+truncation_ignore:
+  # ignore any truncation whose maxLines is set and <= 2 (list-row ellipsis)
+  - max_lines: 2
+  # ignore truncations whose text matches a regex (e.g. known ID/brand patterns)
+  - text_regex: "^(RCP-|INV-)"
+  # ignore truncations of a specific overflow mode
+  - overflow: ellipsis
+```
+
+A rule matches only when **all** of its fields match the issue; the issue is
+ignored if **any** rule matches. `overflow` must be one of `ellipsis` / `clip` /
+`fade` / `visible` (matching `TruncationIssue.overflowMode`).
+
+For advanced cases that reference a widget type or key, pass `ignoreTruncation`
+to `sweepTest` using the `TruncationIgnores` helpers:
+
+```dart
+sweepTest(
+  'profile',
+  builder: () => ProfileScreen(),
+  ignoreTruncation: [
+    TruncationIgnores.byWidgetType(ListCell),
+    TruncationIgnores.byKey(const Key('brandTag')),
+    TruncationIgnores.byText(RegExp(r'^RCP-')),
+    TruncationIgnores.any([
+      TruncationIgnores.byMaxLines(2),
+      TruncationIgnores.byText(RegExp(r'^INV-')),
+    ]),
+  ],
+);
+```
+
+> Note: `byWidgetType` / `byKey` rely on `RenderParagraph.debugCreator`,
+> which Flutter populates only in debug/asserts builds (`flutter test`). In
+> other builds those matchers simply won't match; `byMaxLines` / `byText` work
+> everywhere since they inspect the issue data only.
+
 ### Environment variable overrides
 
 Override any config value in CI without modifying YAML:
@@ -511,6 +555,7 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `diffOutputDir` | `String` | `.locale_sweep/diffs` | Directory for diff images |
 | `setUp` | `Future<void> Function()?` | `null` | Runs once before the sweep group (e.g. load custom fonts) |
 | `screenshotDir` | `String` | from config | Directory for golden screenshots |
+| `ignoreTruncation` | `List<TruncationIgnore>?` | from config | Predicates (incl. `TruncationIgnores` helpers) that exclude intentional truncations from the report |
 
 ### `ViewportPreset` built-ins
 

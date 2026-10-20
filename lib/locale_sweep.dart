@@ -12,6 +12,7 @@ export 'src/detection/overflow_detector.dart';
 export 'src/detection/arb_analyzer.dart';
 export 'src/detection/golden_diff.dart';
 export 'src/detection/truncation_detector.dart';
+export 'src/detection/truncation_ignore.dart';
 export 'src/report/sweep_result.dart';
 export 'src/report/report_generator.dart';
 export 'src/cli/cli_parser.dart';

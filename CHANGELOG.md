@@ -1,3 +1,7 @@
+## Unreleased
+
+- **Ignore intentional truncations** — added `ignoreTruncation` to `sweepTest` plus `TruncationIgnores` helpers (`byWidgetType`, `byKey`, `byMaxLines`, `byText`, `any`, `fromConfig`) to exclude by-design text truncation from reports and `--fail-on truncation`. Declarative `truncation_ignore:` rules in `locale_sweep.yaml` cover the common list-row ellipsis case without any Dart code. `TruncationDetector.detect` gains an optional `ignore` parameter (backwards compatible).
+
 ## 0.7.0
 
 - **Behavior change: truncation-only variants now report `passed: true`** in
