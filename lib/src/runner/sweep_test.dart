@@ -12,6 +12,7 @@ import '../config/viewport_preset.dart';
 import '../detection/arb_analyzer.dart';
 import '../detection/golden_diff.dart';
 import '../detection/overflow_detector.dart';
+import '../detection/pseudo_localizer.dart';
 import '../detection/truncation_detector.dart';
 import '../report/sweep_result.dart';
 import 'sweep_variant.dart';
@@ -154,6 +155,7 @@ void sweepTest(
               textScale: scale,
               viewport: vp,
               isDark: isDark,
+              renderLocale: locale == pseudoLocale ? effectiveBaseLocale : null,
             ),
           );
         }
@@ -165,7 +167,7 @@ void sweepTest(
   if (effectiveArbDir != null) {
     arbReport = ArbAnalyzer.analyze(
       arbDir: effectiveArbDir,
-      locales: effectiveLocales,
+      locales: effectiveLocales.where((l) => l != pseudoLocale).toList(),
       baseLocale: effectiveBaseLocale,
       untranslatedAllowlist: effectiveUntranslatedAllowlist,
     );
@@ -249,7 +251,7 @@ void sweepTest(
               _FallbackWidgetsLocalizationsDelegate(),
             ];
             child = Localizations(
-              locale: parseLocale(variant.locale),
+              locale: parseLocale(variant.renderLocale),
               delegates: allDelegates,
               child: child,
             );
@@ -281,6 +283,8 @@ void sweepTest(
             await body(tester);
             await tester.pumpAndSettle();
           }
+
+          if (variant.isPseudo) await PseudoLocalizer.apply(tester);
 
           truncations = TruncationDetector.detect(
             tester,
@@ -478,7 +482,7 @@ void _configureTestEnvironment(WidgetTester tester, SweepVariant variant) {
   view.physicalSize = Size(variant.viewport.width, variant.viewport.height);
   view.devicePixelRatio = 1.0;
 
-  tester.platformDispatcher.localeTestValue = parseLocale(variant.locale);
+  tester.platformDispatcher.localeTestValue = parseLocale(variant.renderLocale);
   tester.platformDispatcher.textScaleFactorTestValue = variant.textScale;
   tester.platformDispatcher.platformBrightnessTestValue = variant.isDark
       ? ui.Brightness.dark
