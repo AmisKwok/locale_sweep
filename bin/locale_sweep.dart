@@ -74,7 +74,8 @@ Future<void> _main(List<String> args) async {
       'fail-on',
       help:
           'Comma-separated failure categories that cause a non-zero exit.\n'
-          'Categories: overflow, arb, golden, truncation, all (default: all)',
+          'Categories: overflow, arb, golden, truncation, hardcoded, all '
+          '(default: all)',
       defaultsTo: 'all',
     );
 
@@ -133,13 +134,21 @@ Set<String> _failureCategories(ArgResults args) {
           .split(',')
           .map((s) => s.trim())
           .toSet();
-  const valid = {'all', 'none', 'overflow', 'arb', 'golden', 'truncation'};
+  const valid = {
+    'all',
+    'none',
+    'overflow',
+    'arb',
+    'golden',
+    'truncation',
+    'hardcoded',
+  };
   if (categories.any((c) => !valid.contains(c)) ||
       (categories.length > 1 &&
           (categories.contains('all') || categories.contains('none')))) {
     throw const FormatException(
       'Use --fail-on all, none, or a comma-separated '
-      'list of overflow, arb, golden, truncation.',
+      'list of overflow, arb, golden, truncation, hardcoded.',
     );
   }
   return categories;

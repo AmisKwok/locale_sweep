@@ -54,6 +54,8 @@ sweepTest(
 | 8 | **RTL layout** | Auto-detects 10 RTL locales (ar, he, fa, ur, ku, ps, yi, dv, sd, ug) including subtags |
 | 9 | **Dark mode regressions** | Tests both brightness modes with proper `Theme` wrapping |
 | 10 | **Text truncation** | Walks the render tree to find silently truncated text (ellipsis, clip, fade) — translated strings that fit the container but lose content |
+| 11 | **Layouts that break before translations arrive** | A `pseudo` locale renders longer, accented text (`[Šéţţîñĝš one two]`) so overflow and truncation show up on day one |
+| 12 | **Hardcoded strings** | Flags rendered text that matches no ARB message — copy that was never localized |
 
 ---
 
@@ -129,6 +131,67 @@ Also configurable via YAML: `dark_mode: true`
 
 ---
 
+## Pseudo-localization
+
+Translations usually arrive late, but layout bugs can be caught now. Add the
+`pseudo` locale to the matrix:
+
+```dart
+sweepTest(
+  'settings',
+  builder: () => const MyApp(),
+  locales: ['en', 'pseudo'],
+);
+```
+
+Pseudo variants render your base locale, then rewrite every visible string
+before the checks run:
+
+```
+Settings      →  [Šéţţîñĝš one two]
+Save changes  →  [Šáṽé çĥáñĝéš one two three]
+```
+
+- **Longer text** (+30% for long strings, up to +100% for short labels, the
+  way real translations grow) exposes overflows and truncations.
+- **Accented letters** reveal clipped ascenders and diacritics.
+- **Brackets** make cut-off strings obvious in screenshots: a missing `]` means
+  the text was truncated.
+
+It works with any localization library because it rewrites the rendered text,
+not your translation files. Numbers, icons and text without letters are left
+alone. Widgets that rebuild after the screen settles show their original text
+again.
+
+## Hardcoded text detection
+
+Find user-facing strings that never went through localization:
+
+```dart
+sweepTest(
+  'settings',
+  builder: () => const MyApp(),
+  arbDir: 'lib/l10n',
+  detectHardcodedText: true,
+  hardcodedTextAllowlist: [r'^TaskFlow$'], // brand names, user data
+);
+```
+
+Every rendered string is matched against the ARB messages for the variant's
+locale, its language (`pt` for `pt_BR`) and the base locale. Placeholders match
+any value, and each `plural` / `select` branch is understood, so
+`{count, plural, one{# item} other{# items}}` matches `3 items`. Anything that
+matches no message is reported as hardcoded text:
+
+```
+Hardcoded text: "Buy now" matches no ARB message for de
+```
+
+Strings built by joining translations in code (`'${l10n.hello}, $name'`) are
+reported too. They usually need a single message with a placeholder instead.
+Hardcoded text is advisory, like truncations (see [`--fail-on`](#--fail-on)).
+Also configurable via YAML (`hardcoded_text: true`).
+
 ## Localizations integration
 
 Test individual screens with `AppLocalizations.of(context)` — no `MaterialApp` wrapper needed:
@@ -155,13 +218,15 @@ to your own app shell:
 sweepTest(
   'settings',
   builderWithVariant: (variant) =>
-      MyApp(locale: parseLocale(variant.locale)),
+      MyApp(locale: parseLocale(variant.renderLocale)),
   locales: ['en', 'de', 'ar', 'ja'],
 );
 ```
 
 This avoids relying on platform locale resolution, which depends on the host
-machine's locale list and can silently render the wrong language.
+machine's locale list and can silently render the wrong language. Use
+`variant.renderLocale` rather than `variant.locale`, so
+[pseudo-localized](#pseudo-localization) variants render the base locale.
 
 ### Capture-only screenshots
 
@@ -327,6 +392,9 @@ base_locale: en
 # self-names): exempt from the "untranslated" check, still checked for missing
 # keys and placeholder mismatches.
 untranslated_allowlist: [appName]
+# Report rendered text that matches no ARB message (needs arb_dir).
+hardcoded_text: true
+hardcoded_text_allowlist: ["^TaskFlow$"]
 screenshot_dir: .locale_sweep/screenshots
 report_dir: .locale_sweep/reports
 ```
@@ -396,6 +464,7 @@ LOCALE_SWEEP_LOCALES=en,de LOCALE_SWEEP_TOLERANCE=1.0 dart run locale_sweep run
 | `LOCALE_SWEEP_ARB_DIR` | `arb_dir` |
 | `LOCALE_SWEEP_BASE_LOCALE` | `base_locale` |
 | `LOCALE_SWEEP_UNTRANSLATED_ALLOWLIST` | `untranslated_allowlist` (comma-separated) |
+| `LOCALE_SWEEP_HARDCODED_TEXT` | `hardcoded_text` (`true`/`false`) |
 
 ---
 
@@ -458,12 +527,12 @@ dart run locale_sweep run --fail-on none              # report-only mode
 dart run locale_sweep run --fail-on all               # everything (default)
 ```
 
-Categories: `overflow`, `arb`, `golden`, `truncation`, `all`, `none`
+Categories: `overflow`, `arb`, `golden`, `truncation`, `hardcoded`, `all`, `none`
 
-Truncations are advisory: they are reported but do not fail a direct
-`flutter test` run or count towards the failed-variant total. Use
-`--fail-on truncation` to promote them; note that `--fail-on all` (the CLI
-default) already includes truncations.
+Truncations and hardcoded text are advisory: they are reported but do not fail
+a direct `flutter test` run or count towards the failed-variant total. Use
+`--fail-on truncation` or `--fail-on hardcoded` to promote them; note that
+`--fail-on all` (the CLI default) already includes both.
 
 `--fail-on none` suppresses QA findings only. Compilation errors, broken test
 setup or callbacks, incomplete runs, and unreadable result files always return
@@ -539,7 +608,7 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `builderWithVariant` | `Widget Function(SweepVariant)?` | required* | Like `builder`, but receives the current variant (pass its locale directly to `MaterialApp`). Exactly one of `builder` / `builderWithVariant` must be provided |
 | `body` | `Future<void> Function(WidgetTester)?` | `null` | Interactions after the widget is pumped |
 | `variantBody` | `Future<void> Function(WidgetTester, SweepVariant)?` | `null` | Like `body`, but receives the current variant |
-| `locales` | `List<String>?` | from config | BCP-47 locale codes |
+| `locales` | `List<String>?` | from config | BCP-47 locale codes, plus `pseudo` for pseudo-localization |
 | `textScales` | `List<double>?` | from config | Text scale factors |
 | `viewports` | `List<ViewportPreset>?` | from config | Screen dimensions |
 | `darkMode` | `bool?` | from config | Test both light and dark brightness |
@@ -556,6 +625,8 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `setUp` | `Future<void> Function()?` | `null` | Runs once before the sweep group (e.g. load custom fonts) |
 | `screenshotDir` | `String` | from config | Directory for golden screenshots |
 | `ignoreTruncation` | `List<TruncationIgnore>?` | from config | Predicates (incl. `TruncationIgnores` helpers) that exclude intentional truncations from the report |
+| `detectHardcodedText` | `bool?` | from config (`false`) | Report rendered text that matches no ARB message. Requires `arbDir` |
+| `hardcodedTextAllowlist` | `List<String>?` | from config | Regular expressions for rendered text that is intentionally not translated |
 
 ### `ViewportPreset` built-ins
 
@@ -585,4 +656,4 @@ Custom: `ViewportPreset(name: '1280x800', width: 1280, height: 800)`
 
 ---
 
-385 tests across 24 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
+423 tests across 26 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).

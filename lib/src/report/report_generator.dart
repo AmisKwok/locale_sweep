@@ -28,7 +28,8 @@ class ReportGenerator {
 
     if (summary.failed == 0 &&
         summary.executionErrors.isEmpty &&
-        summary.truncationCount == 0) {
+        summary.truncationCount == 0 &&
+        summary.hardcodedTextCount == 0) {
       buf.writeln(
         '**All ${summary.total} variants passed** across ${summary.byLocale.length} locales and ${summary.byFlow.length} flows.',
       );
@@ -41,10 +42,16 @@ class ReportGenerator {
         '**${summary.failed}/${summary.total} variants failed** across ${summary.byLocale.length} locales and ${summary.byFlow.length} flows.',
       );
       buf.writeln();
-    } else if (summary.truncationCount > 0) {
+    } else if (summary.truncationCount > 0 || summary.hardcodedTextCount > 0) {
+      final recorded = [
+        if (summary.truncationCount > 0)
+          '${summary.truncationCount} truncation(s)',
+        if (summary.hardcodedTextCount > 0)
+          '${summary.hardcodedTextCount} hardcoded text(s)',
+      ].join(', ');
       buf.writeln(
         '**All ${summary.total} variants passed the overflow/ARB checks** '
-        '(${summary.truncationCount} truncation(s) recorded).',
+        '($recorded recorded).',
       );
       buf.writeln();
     } else {
@@ -60,6 +67,9 @@ class ReportGenerator {
     }
     if (summary.truncationCount > 0) {
       buf.writeln('- ${summary.truncationCount} text truncations');
+    }
+    if (summary.hardcodedTextCount > 0) {
+      buf.writeln('- ${summary.hardcodedTextCount} hardcoded texts');
     }
     buf.writeln();
 
@@ -93,6 +103,9 @@ class ReportGenerator {
         for (final t in r.truncations) {
           issues.add(t.toString());
         }
+        for (final h in r.hardcodedTexts) {
+          issues.add(h.toString());
+        }
         if (r.errorMessage != null) {
           final msg = r.errorMessage!.length > 80
               ? '${r.errorMessage!.substring(0, 80)}...'
@@ -119,16 +132,16 @@ class ReportGenerator {
 
     final advisories = summary.advisories;
     if (advisories.isNotEmpty) {
-      buf.writeln('## Advisory Truncations');
+      buf.writeln('## Advisory Findings');
       buf.writeln();
       buf.writeln(
-        'Advisory: these fail the run only with `--fail-on truncation` or '
-        '`--fail-on all` (the CLI default).',
+        'Advisory: these fail the run only with `--fail-on truncation`, '
+        '`--fail-on hardcoded` or `--fail-on all` (the CLI default).',
       );
       buf.writeln();
       for (final r in advisories) {
-        for (final t in r.truncations) {
-          buf.writeln('- ${r.flowName} · ${r.variant.displayLabel}: $t');
+        for (final finding in [...r.truncations, ...r.hardcodedTexts]) {
+          buf.writeln('- ${r.flowName} · ${r.variant.displayLabel}: $finding');
         }
       }
       buf.writeln();
@@ -136,11 +149,14 @@ class ReportGenerator {
 
     buf.writeln('## Locale Summary');
     buf.writeln();
+    final showHardcoded = summary.hardcodedTextCount > 0;
     buf.writeln(
-      '| Locale | Passed | Failed | Overflows | ARB Issues | Truncations |',
+      '| Locale | Passed | Failed | Overflows | ARB Issues | Truncations |'
+      '${showHardcoded ? ' Hardcoded |' : ''}',
     );
     buf.writeln(
-      '|--------|--------|--------|-----------|------------|-------------|',
+      '|--------|--------|--------|-----------|------------|-------------|'
+      '${showHardcoded ? '-----------|' : ''}',
     );
 
     for (final entry in summary.byLocale.entries) {
@@ -150,7 +166,10 @@ class ReportGenerator {
       final o = results.fold(0, (sum, r) => sum + r.overflows.length);
       final a = results.fold(0, (sum, r) => sum + r.arbIssues.length);
       final t = results.fold(0, (sum, r) => sum + r.truncations.length);
-      buf.writeln('| ${entry.key} | $p | $f | $o | $a | $t |');
+      final h = results.fold(0, (sum, r) => sum + r.hardcodedTexts.length);
+      buf.writeln(
+        '| ${entry.key} | $p | $f | $o | $a | $t |${showHardcoded ? ' $h |' : ''}',
+      );
     }
     buf.writeln();
 
@@ -209,11 +228,20 @@ class ReportGenerator {
     _htmlSummaryCard(buf, '${summary.overflowCount}', 'Overflows', 'warn');
     _htmlSummaryCard(buf, '${summary.arbIssueCount}', 'ARB Issues', 'warn');
     _htmlSummaryCard(buf, '${summary.truncationCount}', 'Truncations', 'warn');
+    if (summary.hardcodedTextCount > 0) {
+      _htmlSummaryCard(
+        buf,
+        '${summary.hardcodedTextCount}',
+        'Hardcoded',
+        'warn',
+      );
+    }
     buf.writeln('</section>');
-    if (summary.truncationCount > 0) {
+    if (summary.truncationCount > 0 || summary.hardcodedTextCount > 0) {
       buf.writeln(
-        '<p class="note">Truncations are advisory: they fail the run only '
-        'with <code>--fail-on truncation</code> or <code>--fail-on all</code> '
+        '<p class="note">Truncations and hardcoded text are advisory: they '
+        'fail the run only with <code>--fail-on truncation</code>, '
+        '<code>--fail-on hardcoded</code> or <code>--fail-on all</code> '
         '(the CLI default).</p>',
       );
     }
@@ -300,7 +328,7 @@ class ReportGenerator {
         buf.writeln(
           '<span class="badge badge-$status">${status == 'pass' ? 'PASS' : 'FAIL'}</span>',
         );
-        if (r.hasTruncations) {
+        if (r.hasAdvisories) {
           buf.writeln('<span class="badge badge-advisory">ADVISORY</span>');
         }
         if (r.variant.isDark) {
@@ -338,6 +366,11 @@ class ReportGenerator {
               '<div class="issue truncation">${_htmlEscape(t.toString())}</div>',
             );
           }
+          for (final h in r.hardcodedTexts) {
+            buf.writeln(
+              '<div class="issue truncation">${_htmlEscape(h.toString())}</div>',
+            );
+          }
           if (r.errorMessage != null) {
             final msg = r.errorMessage!.length > 120
                 ? '${r.errorMessage!.substring(0, 120)}...'
@@ -373,7 +406,8 @@ class ReportGenerator {
     buf.writeln('<h2>Locale Summary</h2>');
     buf.writeln('<table>');
     buf.writeln(
-      '<thead><tr><th>Locale</th><th>Passed</th><th>Failed</th><th>Overflows</th><th>ARB Issues</th><th>Truncations</th></tr></thead>',
+      '<thead><tr><th>Locale</th><th>Passed</th><th>Failed</th><th>Overflows</th><th>ARB Issues</th><th>Truncations</th>'
+      '${summary.hardcodedTextCount > 0 ? '<th>Hardcoded</th>' : ''}</tr></thead>',
     );
     buf.writeln('<tbody>');
     for (final entry in summary.byLocale.entries) {
@@ -383,9 +417,11 @@ class ReportGenerator {
       final o = results.fold(0, (sum, r) => sum + r.overflows.length);
       final a = results.fold(0, (sum, r) => sum + r.arbIssues.length);
       final t = results.fold(0, (sum, r) => sum + r.truncations.length);
+      final h = results.fold(0, (sum, r) => sum + r.hardcodedTexts.length);
       final rowClass = f > 0 ? ' class="row-fail"' : '';
       buf.writeln(
-        '<tr$rowClass><td>${entry.key.toUpperCase()}</td><td>$p</td><td>$f</td><td>$o</td><td>$a</td><td>$t</td></tr>',
+        '<tr$rowClass><td>${entry.key.toUpperCase()}</td><td>$p</td><td>$f</td><td>$o</td><td>$a</td><td>$t</td>'
+        '${summary.hardcodedTextCount > 0 ? '<td>$h</td>' : ''}</tr>',
       );
     }
     buf.writeln('</tbody></table>');
@@ -726,6 +762,7 @@ document.addEventListener('DOMContentLoaded', function() {
       'overflows': summary.overflowCount,
       'arbIssues': summary.arbIssueCount,
       'truncations': summary.truncationCount,
+      'hardcodedTexts': summary.hardcodedTextCount,
       'executionErrors': summary.executionErrors,
       'results': summary.results.map((r) => r.toJson()).toList(),
     };

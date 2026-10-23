@@ -38,7 +38,7 @@ bool shouldFail(ParsedReport report, Set<String> failOn) {
     return true;
   }
   if (failOn.contains('all')) {
-    return report.failed > 0 || report.results.any((r) => r.hasTruncations);
+    return report.failed > 0 || report.results.any((r) => r.hasAdvisories);
   }
   if (failOn.contains('none')) return false;
 
@@ -49,6 +49,7 @@ bool shouldFail(ParsedReport report, Set<String> failOn) {
       return true;
     }
     if (failOn.contains('truncation') && r.hasTruncations) return true;
+    if (failOn.contains('hardcoded') && r.hasHardcodedText) return true;
   }
   return false;
 }
@@ -227,6 +228,10 @@ ParsedReport _buildReport(
     0,
     (sum, r) => sum + r.truncations.length,
   );
+  final hardcodedCount = sweepResults.fold<int>(
+    0,
+    (sum, r) => sum + r.hardcodedTexts.length,
+  );
 
   final parts = <String>[];
   if (executionErrors.isNotEmpty) {
@@ -236,6 +241,7 @@ ParsedReport _buildReport(
   if (overflowCount > 0) parts.add('$overflowCount overflow(s)');
   if (arbCount > 0) parts.add('$arbCount ARB issue(s)');
   if (truncationCount > 0) parts.add('$truncationCount truncation(s)');
+  if (hardcodedCount > 0) parts.add('$hardcodedCount hardcoded text(s)');
   final summary = parts.isEmpty
       ? 'All $total variants passed.'
       : parts.join(', ');

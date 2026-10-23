@@ -1,3 +1,22 @@
+## Unreleased
+
+- **Pseudo-localization** — add `pseudo` to `locales` to render the base
+  locale with longer, accented, bracketed text (`Settings` →
+  `[Šéţţîñĝš one two]`). Overflow and truncation detection then run against
+  the expanded layout, so problems surface before translations exist. Works
+  with any localization library because it rewrites the rendered text.
+  `SweepVariant` gains `isPseudo` and `renderLocale` (the locale the app is
+  rendered in); `builderWithVariant` users should pass `variant.renderLocale`.
+- **Hardcoded text detection** — `detectHardcodedText: true` (or
+  `hardcoded_text: true` in YAML) reports rendered text that matches no ARB
+  message for the variant's locale, its language, or the base locale.
+  Placeholders and `plural` / `select` branches are understood. Exempt brand
+  names and user data with `hardcodedTextAllowlist` /
+  `hardcoded_text_allowlist`. Findings are advisory, appear in all reports,
+  and fail the run with the new `--fail-on hardcoded` category or
+  `--fail-on all`.
+- **`ArbAnalyzer.loadMessages`** — returns ARB message values per locale.
+
 ## 0.7.1
 
 - **Ignore intentional truncations** — added `ignoreTruncation` to `sweepTest` plus `TruncationIgnores` helpers (`byWidgetType`, `byKey`, `byMaxLines`, `byText`, `any`, `fromConfig`) to exclude by-design text truncation from reports and `--fail-on truncation`. Declarative `truncation_ignore:` rules in `locale_sweep.yaml` cover the common list-row ellipsis case without any Dart code. `TruncationDetector.detect` gains an optional `ignore` parameter (backwards compatible).

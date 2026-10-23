@@ -11,6 +11,7 @@ import '../config/sweep_config.dart';
 import '../config/viewport_preset.dart';
 import '../detection/arb_analyzer.dart';
 import '../detection/golden_diff.dart';
+import '../detection/hardcoded_text_detector.dart';
 import '../detection/overflow_detector.dart';
 import '../detection/pseudo_localizer.dart';
 import '../detection/truncation_detector.dart';
@@ -59,14 +60,22 @@ typedef SweepVariantBody =
 /// is recorded (so screenshots exist before failure).
 ///
 /// Pass exactly one of [builder] or [builderWithVariant]. The latter receives
-/// the current [SweepVariant], so the builder can hand the variant's locale
-/// (or text scale, or viewport) directly to the widget under test instead of
-/// relying on platform locale resolution.
+/// the current [SweepVariant], so the builder can hand the variant's
+/// [SweepVariant.renderLocale] (or text scale, or viewport) directly to the
+/// widget under test instead of relying on platform locale resolution.
 ///
 /// When [captureScreenshots] is true, set [compareScreenshots] to false to
 /// write PNGs for reports without asserting against golden baselines. This is
 /// useful when screenshots are for diagnosis only and pixel diffs would be
 /// noisy (for example, under Flutter's Ahem test font).
+///
+/// Include [pseudoLocale] in [locales] to render the base locale with
+/// expanded, accented text, so layouts can be checked before translations
+/// exist.
+///
+/// Set [detectHardcodedText] (or `hardcoded_text: true`) to report rendered
+/// text that matches no ARB message in [arbDir]. Strings matching a pattern in
+/// [hardcodedTextAllowlist] are ignored.
 void sweepTest(
   String flowName, {
   Widget Function()? builder,
@@ -92,6 +101,8 @@ void sweepTest(
   Future<void> Function()? setUp,
   List<LocalizationsDelegate<dynamic>>? localizationsDelegates,
   List<TruncationIgnore>? ignoreTruncation,
+  bool? detectHardcodedText,
+  List<String>? hardcodedTextAllowlist,
 }) {
   if ((builder == null) == (builderWithVariant == null)) {
     throw ArgumentError(
@@ -163,6 +174,21 @@ void sweepTest(
     }
   }
 
+  final effectiveDetectHardcoded = detectHardcodedText ?? cfg.hardcodedText;
+  if (effectiveDetectHardcoded && effectiveArbDir == null) {
+    throw ArgumentError(
+      'Hardcoded text detection for "$flowName" needs arbDir (or arb_dir in '
+      'locale_sweep.yaml) to know which strings are translated.',
+    );
+  }
+  final hardcodedDetector = effectiveDetectHardcoded
+      ? HardcodedTextDetector(
+          messages: ArbAnalyzer.loadMessages(effectiveArbDir!),
+          baseLocale: effectiveBaseLocale,
+          allowlist: hardcodedTextAllowlist ?? cfg.hardcodedTextAllowlist,
+        )
+      : null;
+
   ArbReport? arbReport;
   if (effectiveArbDir != null) {
     arbReport = ArbAnalyzer.analyze(
@@ -217,6 +243,7 @@ void sweepTest(
         var passed = true;
         final arbIssues = <ArbIssue>[];
         var truncations = <TruncationIssue>[];
+        var hardcodedTexts = <HardcodedTextIssue>[];
         DiffResult? diffResult;
 
         if (arbReport != null) {
@@ -282,6 +309,14 @@ void sweepTest(
           } else if (body != null) {
             await body(tester);
             await tester.pumpAndSettle();
+          }
+
+          if (hardcodedDetector != null) {
+            hardcodedTexts = hardcodedDetector.detect(
+              tester,
+              locale: variant.locale,
+              renderLocale: variant.renderLocale,
+            );
           }
 
           if (variant.isPseudo) await PseudoLocalizer.apply(tester);
@@ -355,6 +390,7 @@ void sweepTest(
           overflows: List.of(overflowDetector.errors),
           arbIssues: arbIssues,
           truncations: truncations,
+          hardcodedTexts: hardcodedTexts,
           screenshotPath: screenshotPath,
           errorMessage: errorMessage,
           failureKind: failureKind,
