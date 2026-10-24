@@ -1,4 +1,4 @@
-## Unreleased
+## 0.7.2
 
 - **Pseudo-localization** — add `pseudo` to `locales` to render the base
   locale with longer, accented, bracketed text (`Settings` →
