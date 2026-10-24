@@ -1,5 +1,11 @@
 import '../config/viewport_preset.dart';
 
+/// Locale code that renders the base locale with pseudo-localized text.
+///
+/// Add it to `locales` to stress-test layouts with longer, accented strings
+/// before real translations exist.
+const pseudoLocale = 'pseudo';
+
 /// A single combination of locale, text scale, viewport, and brightness to test.
 class SweepVariant {
   /// BCP-47 locale code.
@@ -14,12 +20,22 @@ class SweepVariant {
   /// Whether to use dark mode.
   final bool isDark;
 
+  final String? _renderLocale;
+
   const SweepVariant({
     required this.locale,
     required this.textScale,
     required this.viewport,
     this.isDark = false,
-  });
+    String? renderLocale,
+  }) : _renderLocale = renderLocale;
+
+  /// Whether this variant pseudo-localizes the rendered text.
+  bool get isPseudo => locale == pseudoLocale;
+
+  /// The locale the app is rendered in. For [pseudoLocale] variants this is
+  /// the base locale; otherwise it equals [locale].
+  String get renderLocale => _renderLocale ?? locale;
 
   static const _rtlLocales = {
     'ar',
@@ -35,7 +51,7 @@ class SweepVariant {
   };
 
   /// Whether this locale uses right-to-left text direction.
-  bool get isRtl => _rtlLocales.contains(locale.split('_').first);
+  bool get isRtl => _rtlLocales.contains(renderLocale.split('_').first);
 
   String get label {
     final parts = <String>[locale];

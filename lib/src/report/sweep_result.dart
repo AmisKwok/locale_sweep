@@ -1,6 +1,7 @@
 import '../config/viewport_preset.dart';
 import '../detection/arb_analyzer.dart';
 import '../detection/diff_result.dart';
+import '../detection/hardcoded_text_issue.dart';
 import '../detection/overflow_error.dart';
 import '../detection/truncation_issue.dart';
 import '../runner/sweep_variant.dart';
@@ -28,6 +29,9 @@ class SweepResult {
   /// Any silently truncated text elements detected after layout.
   final List<TruncationIssue> truncations;
 
+  /// Rendered text that matches no ARB message (when detection is enabled).
+  final List<HardcodedTextIssue> hardcodedTexts;
+
   /// Path to the golden screenshot file, if captured.
   final String? screenshotPath;
 
@@ -50,6 +54,7 @@ class SweepResult {
     this.overflows = const [],
     this.arbIssues = const [],
     this.truncations = const [],
+    this.hardcodedTexts = const [],
     this.screenshotPath,
     this.errorMessage,
     this.failureKind,
@@ -65,6 +70,7 @@ class SweepResult {
     overflows: overflows,
     arbIssues: arbIssues,
     truncations: truncations,
+    hardcodedTexts: hardcodedTexts,
     screenshotPath: screenshotPath ?? this.screenshotPath,
     errorMessage: errorMessage,
     failureKind: failureKind,
@@ -81,18 +87,25 @@ class SweepResult {
   /// Whether any text was silently truncated.
   bool get hasTruncations => truncations.isNotEmpty;
 
+  /// Whether any rendered text matched no ARB message.
+  bool get hasHardcodedText => hardcodedTexts.isNotEmpty;
+
+  /// Whether this variant has advisory findings (truncations, hardcoded text).
+  bool get hasAdvisories => hasTruncations || hasHardcodedText;
+
   /// Whether this variant has any findings, including advisory ones.
   bool get hasIssues =>
       hasOverflows ||
       hasArbIssues ||
-      hasTruncations ||
+      hasAdvisories ||
       !passed ||
       errorMessage != null;
 
   /// Whether this variant failed a gating check.
   ///
-  /// Truncations are advisory: they are reported (and can be opted into with
-  /// `--fail-on truncation`) but they never fail a variant on their own.
+  /// Truncations and hardcoded text are advisory: they are reported (and fail
+  /// the run with `--fail-on truncation`, `hardcoded` or `all`) but they never
+  /// fail a variant on their own.
   bool get hasGatingIssues =>
       hasOverflows || hasArbIssues || !passed || errorMessage != null;
 
@@ -103,7 +116,7 @@ class SweepResult {
       (!passed &&
           !hasOverflows &&
           !hasArbIssues &&
-          !hasTruncations &&
+          !hasAdvisories &&
           failureKind == null);
 
   /// Serializes this result to a JSON-compatible map.
@@ -111,6 +124,8 @@ class SweepResult {
     'flow': flowName,
     'variant': variant.label,
     'locale': variant.locale,
+    if (variant.renderLocale != variant.locale)
+      'renderLocale': variant.renderLocale,
     'textScale': variant.textScale,
     'viewportName': variant.viewport.name,
     'viewportWidth': variant.viewport.width,
@@ -121,6 +136,7 @@ class SweepResult {
     'overflows': overflows.map((e) => e.toJson()).toList(),
     'arbIssues': arbIssues.map((e) => e.toJson()).toList(),
     'truncations': truncations.map((e) => e.toJson()).toList(),
+    'hardcodedTexts': hardcodedTexts.map((e) => e.toJson()).toList(),
     'screenshot': screenshotPath,
     'error': errorMessage,
     if (failureKind != null) 'failureKind': failureKind!.name,
@@ -140,6 +156,7 @@ class SweepResult {
         height: (json['viewportHeight'] as num).toDouble(),
       ),
       isDark: json['brightness'] == 'dark',
+      renderLocale: json['renderLocale'] as String?,
     ),
     passed: json['passed'] as bool,
     overflows: (json['overflows'] as List)
@@ -151,6 +168,11 @@ class SweepResult {
     truncations:
         (json['truncations'] as List?)
             ?.map((e) => TruncationIssue.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    hardcodedTexts:
+        (json['hardcodedTexts'] as List?)
+            ?.map((e) => HardcodedTextIssue.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
     screenshotPath: json['screenshot'] as String?,
@@ -190,13 +212,15 @@ class SweepRunSummary {
       results.fold(0, (sum, r) => sum + r.arbIssues.length);
   int get truncationCount =>
       results.fold(0, (sum, r) => sum + r.truncations.length);
+  int get hardcodedTextCount =>
+      results.fold(0, (sum, r) => sum + r.hardcodedTexts.length);
 
   List<SweepResult> get failures =>
       results.where((r) => r.hasGatingIssues).toList();
 
-  /// Results that only carry advisory findings (currently truncations).
+  /// Results that only carry advisory findings.
   List<SweepResult> get advisories =>
-      results.where((r) => !r.hasGatingIssues && r.hasTruncations).toList();
+      results.where((r) => !r.hasGatingIssues && r.hasAdvisories).toList();
 
   Map<String, List<SweepResult>> get byFlow {
     final map = <String, List<SweepResult>>{};

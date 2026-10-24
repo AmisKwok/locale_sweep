@@ -14,6 +14,38 @@ class ArbAnalyzer {
   /// `untranslated` check (for values that are intentionally identical across
   /// locales, such as app names or language self-names). Missing keys and
   /// placeholder mismatches are still reported for those keys.
+  /// Message values keyed by locale, then ARB key. Metadata is skipped.
+  static Map<String, Map<String, String>> loadMessages(String arbDir) {
+    final dir = Directory(arbDir);
+    if (!dir.existsSync()) return {};
+    return {
+      for (final MapEntry(key: locale, value: arb) in _loadArbFiles(
+        dir,
+      ).entries)
+        locale: {
+          for (final MapEntry(:key, :value) in arb.entries)
+            if (!key.startsWith('@') && value is String) key: value,
+        },
+    };
+  }
+
+  static Map<String, Map<String, dynamic>> _loadArbFiles(Directory dir) {
+    final arbFiles = <String, Map<String, dynamic>>{};
+    for (final file in dir.listSync().whereType<File>()) {
+      if (!file.path.endsWith('.arb')) continue;
+      final name = p.basenameWithoutExtension(file.path);
+      final locale = _extractLocale(name);
+      if (locale == null) continue;
+      try {
+        arbFiles[locale] =
+            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      } catch (e) {
+        arbFiles[locale] = {};
+      }
+    }
+    return arbFiles;
+  }
+
   static ArbReport analyze({
     required String arbDir,
     List<String> locales = const ['en', 'de', 'ar', 'ja'],
@@ -33,19 +65,7 @@ class ArbAnalyzer {
       );
     }
 
-    final arbFiles = <String, Map<String, dynamic>>{};
-    for (final file in dir.listSync().whereType<File>()) {
-      if (!file.path.endsWith('.arb')) continue;
-      final name = p.basenameWithoutExtension(file.path);
-      final locale = _extractLocale(name);
-      if (locale == null) continue;
-      try {
-        arbFiles[locale] =
-            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      } catch (e) {
-        arbFiles[locale] = {};
-      }
-    }
+    final arbFiles = _loadArbFiles(dir);
 
     final baseArb = arbFiles[baseLocale];
     if (baseArb == null) {

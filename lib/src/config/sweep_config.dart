@@ -48,6 +48,15 @@ class SweepConfig {
   /// dependency; predicates are built lazily by the runner.
   final List<Map<String, dynamic>>? truncationIgnoreRaw;
 
+  /// Whether to report rendered text that matches no ARB message.
+  ///
+  /// Requires [arbDir].
+  final bool hardcodedText;
+
+  /// Regular expressions for rendered text that is intentionally not
+  /// translated (brand names, user data). Used when [hardcodedText] is on.
+  final List<String> hardcodedTextAllowlist;
+
   const SweepConfig({
     this.locales = const ['en', 'de', 'ar', 'ja'],
     this.textScales = const [1.0, 2.0],
@@ -60,6 +69,8 @@ class SweepConfig {
     this.baseLocale = 'en',
     this.untranslatedAllowlist = const [],
     this.truncationIgnoreRaw,
+    this.hardcodedText = false,
+    this.hardcodedTextAllowlist = const [],
   });
 
   static const _knownKeys = {
@@ -73,6 +84,8 @@ class SweepConfig {
     'arb_dir',
     'base_locale',
     'untranslated_allowlist',
+    'hardcoded_text',
+    'hardcoded_text_allowlist',
     'truncation_ignore',
   };
 
@@ -126,6 +139,8 @@ class SweepConfig {
     _warnIfWrongType(path, yaml, 'tolerance', 'num');
     _warnIfWrongType(path, yaml, 'base_locale', 'string');
     _warnIfWrongType(path, yaml, 'untranslated_allowlist', 'list');
+    _warnIfWrongType(path, yaml, 'hardcoded_text', 'bool');
+    _warnIfWrongType(path, yaml, 'hardcoded_text_allowlist', 'list');
     _warnIfWrongType(path, yaml, 'truncation_ignore', 'list');
 
     return _applyEnvOverrides(
@@ -145,6 +160,9 @@ class SweepConfig {
         untranslatedAllowlist:
             _parseStringList(yaml['untranslated_allowlist']) ?? const [],
         truncationIgnoreRaw: _parseIgnoreRules(yaml['truncation_ignore']),
+        hardcodedText: yaml['hardcoded_text'] == true,
+        hardcodedTextAllowlist:
+            _parseStringList(yaml['hardcoded_text_allowlist']) ?? const [],
       ),
     );
   }
@@ -215,6 +233,10 @@ class SweepConfig {
               .toList() ??
           base.untranslatedAllowlist,
       truncationIgnoreRaw: base.truncationIgnoreRaw,
+      hardcodedText: env.containsKey('LOCALE_SWEEP_HARDCODED_TEXT')
+          ? env['LOCALE_SWEEP_HARDCODED_TEXT'] == 'true'
+          : base.hardcodedText,
+      hardcodedTextAllowlist: base.hardcodedTextAllowlist,
     );
   }
 
