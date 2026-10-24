@@ -455,6 +455,7 @@ LOCALE_SWEEP_LOCALES=en,de LOCALE_SWEEP_TOLERANCE=1.0 dart run locale_sweep run
 
 | Variable | Overrides |
 |:--|:--|
+| `LOCALE_SWEEP_CONFIG` | Path to the YAML config file (default `locale_sweep.yaml`; the CLI sets it from `--config`) |
 | `LOCALE_SWEEP_LOCALES` | `locales` (comma-separated) |
 | `LOCALE_SWEEP_TEXT_SCALES` | `text_scales` (comma-separated) |
 | `LOCALE_SWEEP_DARK_MODE` | `dark_mode` (`true`/`false`) |
@@ -614,6 +615,7 @@ dart run locale_sweep scan                                # Discover monorepo pa
 | `darkMode` | `bool?` | from config | Test both light and dark brightness |
 | `lightTheme` / `darkTheme` | `ThemeData?` | Flutter defaults | Themes for brightness variants |
 | `skip` | `bool Function(SweepVariant)?` | `null` | Exclude variants from the matrix |
+| `config` | `SweepConfig?` | loaded from YAML | Explicit configuration instead of `locale_sweep.yaml`. Other parameters still override it |
 | `arbDir` | `String?` | from config | Path to `.arb` files for static analysis |
 | `baseLocale` | `String?` | from config | Base locale for ARB analysis (default: `'en'`) |
 | `untranslatedAllowlist` | `List<String>?` | from config | ARB keys exempt from the `untranslated` check |
