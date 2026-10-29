@@ -12,11 +12,17 @@ import 'fixtures/load_fonts.dart';
 
 void main() {
   final goldenDir = Directory.systemTemp.createTempSync('sweep_goldens_');
+  // Resolved relative to the test file, so the goldens of the zero-tolerance
+  // groups can be compared on the second pass.
+  const zeroToleranceGoldenDir = '.locale_sweep/zero_tolerance_goldens';
   final previousUpdateMode = autoUpdateGoldenFiles;
   setUpAll(() => autoUpdateGoldenFiles = true);
   tearDownAll(() {
     autoUpdateGoldenFiles = previousUpdateMode;
     goldenDir.deleteSync(recursive: true);
+    // The zero-tolerance groups resolve their baselines next to this file.
+    final zeroDir = Directory('test/$zeroToleranceGoldenDir');
+    if (zeroDir.existsSync()) zeroDir.deleteSync(recursive: true);
   });
   setUpAll(() async {
     await loadTestFonts();
@@ -39,6 +45,51 @@ void main() {
       captureScreenshots: true,
       screenshotDir: goldenDir.path,
       tolerance: 0.5,
+      diffOutputDir: '.locale_sweep/diffs',
+    );
+  });
+
+  // ── Test 1b: the same golden compared again at tolerance 0 ──────────────
+  // The first group writes the baselines (goldens are resolved relative to
+  // the test file), the second one compares against them. Diff data must be
+  // produced even when every pixel difference is a failure (tolerance 0).
+  group('sweepTest with zero tolerance', () {
+    sweepTest(
+      'diff_zero',
+      builder: () => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(fontFamily: 'Roboto'),
+        home: const _SimpleCard(title: 'Hello', subtitle: 'World'),
+      ),
+      locales: ['en', 'de'],
+      textScales: [1.0],
+      viewports: [ViewportPreset.phone],
+      captureScreenshots: true,
+      screenshotDir: zeroToleranceGoldenDir,
+      tolerance: 0.0,
+      diffOutputDir: '.locale_sweep/diffs',
+    );
+  });
+
+  group('sweepTest with zero tolerance (second pass)', () {
+    // With `autoUpdateGoldenFiles` on, flutter writes the baseline instead of
+    // comparing, so no diff is produced. Turn it off for the comparison pass.
+    setUpAll(() => autoUpdateGoldenFiles = false);
+    tearDownAll(() => autoUpdateGoldenFiles = true);
+
+    sweepTest(
+      'diff_zero',
+      builder: () => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(fontFamily: 'Roboto'),
+        home: const _SimpleCard(title: 'Hello', subtitle: 'World'),
+      ),
+      locales: ['en', 'de'],
+      textScales: [1.0],
+      viewports: [ViewportPreset.phone],
+      captureScreenshots: true,
+      screenshotDir: zeroToleranceGoldenDir,
+      tolerance: 0.0,
       diffOutputDir: '.locale_sweep/diffs',
     );
   });
@@ -342,6 +393,30 @@ void main() {
       File('${reportDir.path}/diff_e2e_report.html').writeAsStringSync(html);
       File('${reportDir.path}/diff_e2e_report.md').writeAsStringSync(md);
       File('${reportDir.path}/diff_e2e_report.json').writeAsStringSync(jsonStr);
+    });
+  });
+
+  // ── Test 7: diff data is produced at tolerance 0 ────────────────────────
+  group('Zero tolerance diffing', () {
+    test('records a DiffResult when comparing against an existing golden', () {
+      final results = sweepResults
+          .where((r) => r.flowName == 'diff_zero')
+          .toList();
+      expect(results, isNotEmpty);
+
+      // The first group only writes baselines (no golden to compare against),
+      // the second one compares — and must report a diff at tolerance 0.
+      final compared = results.where((r) => r.diff != null).toList();
+      expect(
+        compared,
+        isNotEmpty,
+        reason:
+            'Diff data is reported for every comparison, including '
+            'tolerance 0, so the Diff % column and JSON `diff` are populated.',
+      );
+      for (final result in compared) {
+        expect(result.diff!.diffPercent, lessThanOrEqualTo(100));
+      }
     });
   });
 
