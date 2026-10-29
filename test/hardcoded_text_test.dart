@@ -97,6 +97,67 @@ void main() {
     });
   });
 
+  group('ArbMessageMatcher without literal text', () {
+    test('a placeholder-only message does not match everything', () {
+      final m = ArbMessageMatcher.fromMessages(['Settings', '{name}']);
+      expect(m.matches('Buy now'), isFalse);
+      expect(m.matches('Settings'), isTrue);
+    });
+
+    test('letterless branches are dropped, the rest still match', () {
+      final m = ArbMessageMatcher.fromMessages([
+        '{count, plural, =0{{count}} other{# items}}',
+      ]);
+      expect(m.matches('3 items'), isTrue);
+      expect(m.matches('Buy now'), isFalse);
+    });
+
+    test('punctuation alone is not enough to match', () {
+      final m = ArbMessageMatcher.fromMessages(['{label}: {value}']);
+      expect(m.matches('Buy: now'), isFalse);
+    });
+
+    test('a select between placeholders only is skipped', () {
+      final m = ArbMessageMatcher.fromMessages([
+        '{gender, select, male{{name}} other{{name}}}',
+      ]);
+      expect(m.matches('Buy now'), isFalse);
+    });
+
+    test('literal text in one branch still anchors the others', () {
+      final m = ArbMessageMatcher.fromMessages([
+        'Hi {count, plural, =0{{count}} other{# friends}}',
+      ]);
+      expect(m.matches('Hi 0'), isTrue);
+      expect(m.matches('Hi 5 friends'), isTrue);
+      expect(m.matches('Bye 5 friends'), isFalse);
+    });
+
+    test('messages with too many branch combinations fall back to exact', () {
+      final message = List.generate(
+        9,
+        (i) => '{n$i, plural, one{a} other{b}}',
+      ).join(' ');
+      expect(ArbMessageMatcher.toPattern(message), isNull);
+      final m = ArbMessageMatcher.fromMessages([message]);
+      expect(m.matches(message), isTrue);
+      expect(m.matches('a a a a a a a a a'), isFalse);
+    });
+
+    testWidgets('detector reports hardcoded text next to {name} messages', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_texts(['Settings', 'Buy now']));
+      final issues = HardcodedTextDetector(
+        messages: {
+          'en': {'title': 'Settings', 'userName': '{name}'},
+        },
+        baseLocale: 'en',
+      ).detect(tester, locale: 'en', renderLocale: 'en');
+      expect(issues.map((i) => i.text), ['Buy now']);
+    });
+  });
+
   group('HardcodedTextDetector', () {
     testWidgets('reports only text missing from the ARB messages', (
       tester,

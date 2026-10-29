@@ -3,6 +3,10 @@
 /// Literal messages are compared exactly. Messages with ICU arguments are
 /// compiled to patterns: `{name}` matches any text, and each `plural` /
 /// `select` branch becomes an alternative (`#` matches the plural count).
+///
+/// Alternatives without literal letters (`{name}`, or a `=0{{count}}`
+/// branch) are dropped: they would match any rendered text, including
+/// genuinely hardcoded strings.
 class ArbMessageMatcher {
   final Set<String> _literals;
   final List<RegExp> _patterns;
@@ -20,12 +24,19 @@ class ArbMessageMatcher {
         literals.add(trimmed);
         continue;
       }
-      final pattern = toPattern(trimmed);
-      if (pattern != null) {
-        patterns.add(RegExp('^$pattern\$', dotAll: true, unicode: true));
-      } else {
+      final alternatives = _parse(trimmed);
+      if (alternatives == null) {
         literals.add(trimmed);
+        continue;
       }
+      final specific = [
+        for (final alt in alternatives)
+          if (alt.hasLetters) alt.pattern,
+      ];
+      if (specific.isEmpty) continue;
+      patterns.add(
+        RegExp('^(?:${specific.join('|')})\$', dotAll: true, unicode: true),
+      );
     }
     return ArbMessageMatcher._(literals, patterns);
   }
@@ -40,15 +51,25 @@ class ArbMessageMatcher {
   /// Converts an ICU message to a regular-expression source, or `null` when
   /// the message is malformed.
   static String? toPattern(String message) {
+    final alternatives = _parse(message);
+    if (alternatives == null) return null;
+    final patterns = alternatives.map((a) => a.pattern).toSet();
+    return patterns.length == 1 ? patterns.single : '(?:${patterns.join('|')})';
+  }
+
+  static List<_Alternative>? _parse(String message) {
     try {
       final parser = _IcuParser(message);
-      final pattern = parser.message(inPlural: false, nested: false);
-      return parser.atEnd ? pattern : null;
+      final alternatives = parser.message(inPlural: false, nested: false);
+      return parser.atEnd ? alternatives : null;
     } on FormatException {
       return null;
     }
   }
 }
+
+/// One shape a message can render to, and whether it has literal letters.
+typedef _Alternative = ({String pattern, bool hasLetters});
 
 class _IcuParser {
   final String source;
@@ -60,8 +81,27 @@ class _IcuParser {
 
   static const _any = '.*?';
 
-  String message({required bool inPlural, required bool nested}) {
-    final buf = StringBuffer();
+  static const _wildcard = <_Alternative>[(pattern: _any, hasLetters: false)];
+
+  /// Messages expanding to more branch combinations are treated as malformed.
+  static const _maxAlternatives = 256;
+
+  static final _letter = RegExp(r'\p{L}', unicode: true);
+
+  List<_Alternative> message({required bool inPlural, required bool nested}) {
+    var alternatives = <_Alternative>[(pattern: '', hasLetters: false)];
+    final literal = StringBuffer();
+    var literalLetters = false;
+
+    void flush() {
+      if (literal.isEmpty) return;
+      alternatives = _combine(alternatives, [
+        (pattern: literal.toString(), hasLetters: literalLetters),
+      ]);
+      literal.clear();
+      literalLetters = false;
+    }
+
     while (!atEnd) {
       final c = source[_i];
       if (c == '}') {
@@ -69,28 +109,50 @@ class _IcuParser {
         throw const FormatException('Unbalanced "}"');
       }
       if (c == '{') {
+        flush();
         _i++;
-        buf.write(_argument());
+        alternatives = _combine(alternatives, _argument());
         continue;
       }
-      buf.write(c == '#' && inPlural ? _any : RegExp.escape(c));
+      if (c == '#' && inPlural) {
+        flush();
+        alternatives = _combine(alternatives, _wildcard);
+      } else {
+        literal.write(RegExp.escape(c));
+        if (_letter.hasMatch(c)) literalLetters = true;
+      }
       _i++;
     }
-    return buf.toString();
+    flush();
+    return alternatives;
   }
 
-  String _argument() {
+  List<_Alternative> _combine(List<_Alternative> a, List<_Alternative> b) {
+    if (a.length * b.length > _maxAlternatives) {
+      throw const FormatException('Too many branch combinations');
+    }
+    return [
+      for (final x in a)
+        for (final y in b)
+          (
+            pattern: x.pattern + y.pattern,
+            hasLetters: x.hasLetters || y.hasLetters,
+          ),
+    ];
+  }
+
+  List<_Alternative> _argument() {
     _readUntil(const {',', '}'});
-    if (_take('}')) return _any;
+    if (_take('}')) return _wildcard;
     _expect(',');
     final type = _readUntil(const {',', '}'}).trim();
-    if (_take('}')) return _any;
+    if (_take('}')) return _wildcard;
     _expect(',');
     if (type != 'plural' && type != 'select' && type != 'selectordinal') {
       _skipNested();
-      return _any;
+      return _wildcard;
     }
-    final branches = <String>[];
+    final branches = <_Alternative>[];
     while (true) {
       _skipWhitespace();
       if (atEnd) throw const FormatException('Unterminated argument');
@@ -100,11 +162,11 @@ class _IcuParser {
         throw const FormatException('Missing branch body');
       }
       _i++;
-      branches.add(message(inPlural: type != 'select', nested: true));
+      branches.addAll(message(inPlural: type != 'select', nested: true));
       _expect('}');
     }
     if (branches.isEmpty) throw const FormatException('No branches');
-    return '(?:${branches.join('|')})';
+    return branches;
   }
 
   String _readUntil(Set<String> stops) {

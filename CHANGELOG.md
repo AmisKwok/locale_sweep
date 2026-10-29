@@ -1,3 +1,13 @@
+## 0.7.3
+
+- **Hardcoded text detection no longer goes silent when the ARB contains a
+  placeholder-only message.** A message such as `"userName": "{name}"`, or a
+  `plural` branch like `=0{{count}}`, compiled to a pattern that matched any
+  text, so no hardcoded string was ever reported for that locale. Message
+  shapes without literal letters are now ignored when matching. Text rendered
+  only through such a message (a user's name, for example) is reported;
+  exempt it with `hardcoded_text_allowlist`.
+
 ## 0.7.2
 
 - **Pseudo-localization** — add `pseudo` to `locales` to render the base

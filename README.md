@@ -65,7 +65,7 @@ sweepTest(
 
 ```yaml
 dev_dependencies:
-  locale_sweep: ^0.7.2
+  locale_sweep: ^0.7.3
 ```
 
 ### 2. Write a sweep test
@@ -187,8 +187,10 @@ matches no message is reported as hardcoded text:
 Hardcoded text: "Buy now" matches no ARB message for de
 ```
 
-Strings built by joining translations in code (`'${l10n.hello}, $name'`) are
-reported too. They usually need a single message with a placeholder instead.
+Messages without any literal text, such as `"userName": "{name}"`, can't tell
+user data from hardcoded copy, so they never count as a match. Add patterns for
+names and other data to `hardcodedTextAllowlist`. Strings built by joining
+translations in code (`'${l10n.hello}, $name'`) are reported too. They usually need a single message with a placeholder instead.
 Hardcoded text is advisory, like truncations (see [`--fail-on`](#--fail-on)).
 Also configurable via YAML (`hardcoded_text: true`).
 
@@ -658,4 +660,4 @@ Custom: `ViewportPreset(name: '1280x800', width: 1280, height: 800)`
 
 ---
 
-423 tests across 26 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
+430 tests across 26 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
