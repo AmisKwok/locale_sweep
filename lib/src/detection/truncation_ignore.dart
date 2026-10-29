@@ -19,6 +19,9 @@ typedef TruncationIgnore =
 /// Convenience builders for the most common ignore rules, so users don't have
 /// to hand-roll [TruncationIgnore] predicates.
 class TruncationIgnores {
+  /// The `overflow` values `TruncationIssue.overflowMode` can produce.
+  static const _validOverflow = {'ellipsis', 'clip', 'fade', 'visible'};
+
   /// Walks up from the paragraph's creating element to find any [Element]
   /// whose widget has the exact [type]. This matches the user's own wrapping
   /// widget (e.g. a `ListCell`), not just the framework `RichText` that
@@ -87,12 +90,17 @@ class TruncationIgnores {
   static TruncationIgnore fromConfig(Map<String, dynamic> rule) {
     const knownKeys = {'max_lines', 'overflow', 'text_regex'};
 
+    // An unknown key is a typo. Applying the rest of the rule anyway would
+    // silently widen it (a misspelled `text_regexp` next to `max_lines` used
+    // to ignore every short truncation), so the rule is dropped.
     for (final key in rule.keys) {
       if (!knownKeys.contains(key)) {
         stderr.writeln(
           'Warning: unknown key "$key" in truncation_ignore rule; '
-          'valid keys are ${knownKeys.join(', ')}. Rule: $rule',
+          'valid keys are ${knownKeys.join(', ')}. Skipping rule. '
+          'Rule: $rule',
         );
+        return (_, _) => false;
       }
     }
 
@@ -125,6 +133,15 @@ class TruncationIgnores {
         stderr.writeln(
           'Warning: "overflow" in truncation_ignore must be a string, '
           'skipping rule. Rule: $rule',
+        );
+        return (_, _) => false;
+      }
+      // A value the detector never produces would make the rule dead.
+      if (!_validOverflow.contains(value)) {
+        stderr.writeln(
+          'Warning: "overflow" in truncation_ignore must be one of '
+          '${_validOverflow.join(', ')}, got "$value". Skipping rule. '
+          'Rule: $rule',
         );
         return (_, _) => false;
       }
