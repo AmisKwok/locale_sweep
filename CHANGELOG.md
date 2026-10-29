@@ -1,4 +1,4 @@
-## Unreleased
+## 0.7.3
 
 - **Hardcoded text detection no longer goes silent when the ARB contains a
   placeholder-only message.** A message such as `"userName": "{name}"`, or a
