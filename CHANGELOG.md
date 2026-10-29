@@ -8,6 +8,29 @@
   only through such a message (a user's name, for example) is reported;
   exempt it with `hardcoded_text_allowlist`.
 
+## Unreleased
+
+- **ARB files that cannot be read are reported** instead of being treated as
+  empty. A broken base ARB used to yield an empty key set and silently pass
+  every check; it now produces a `parseError` finding (`ArbIssueType`). A broken
+  target ARB no longer reports every base key as `missing`.
+- **ARB file names with subtags are recognized** — `app_zh_Hans.arb`,
+  `app_zh_Hant_CN.arb`, `app_es_419.arb`, `app_fil.arb`, `en.arb` and
+  `app_en-US.arb` are all loaded now (previously only `app_en.arb` /
+  `app_en_US.arb`; everything else was skipped as "No ARB file").
+- **Placeholder checks are two-way and metadata optional.** A placeholder that
+  exists only in the target (`{nmae}`) is reported, and when `@key.placeholders`
+  metadata is absent the placeholders are read from the base message itself, so
+  hand-written ARB files are no longer skipped. Placeholder names are matched
+  literally (so `{file.name}` is safe) and ICU branch bodies (`good{Super}`,
+  `male {he}`) are not mistaken for placeholders — the spaced style from
+  Flutter's gen-l10n docs is handled.
+- **`truncation_ignore` rules with an unknown key are skipped** instead of being
+  applied with the remaining fields — a misspelled `text_regexp` next to a valid
+  `max_lines` used to ignore every short truncation. An unsupported `overflow`
+  value (`ellipses`) is rejected with a warning too, instead of leaving a
+  permanently dead rule.
+
 ## 0.7.2
 
 - **Pseudo-localization** — add `pseudo` to `locales` to render the base

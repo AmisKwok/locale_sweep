@@ -66,6 +66,46 @@ class ArbMessageMatcher {
       return null;
     }
   }
+
+  /// The names of the ICU arguments [message] references.
+  ///
+  /// The message is walked rather than scanned for braces, so branch bodies
+  /// such as `male {he}` are not read as arguments whatever their spacing
+  /// (`{gender, select, male {he}}` is the style used in Flutter's gen-l10n
+  /// docs), while nested arguments (`other{{count} items}`) are still found.
+  /// Messages the parser rejects fall back to [_fallbackArgumentNames].
+  static Set<String> argumentNames(String message) {
+    try {
+      final parser = _IcuParser(message, collecting: true);
+      parser.message(inPlural: false, nested: false);
+      if (!parser.atEnd) throw const FormatException('Trailing input');
+      return parser.arguments;
+    } on FormatException {
+      return _fallbackArgumentNames(message);
+    }
+  }
+
+  /// Argument names for a message the ICU parser cannot parse.
+  static Set<String> _fallbackArgumentNames(String message) {
+    final names = <String>{};
+    for (final match in _argumentPattern.allMatches(message)) {
+      if (match.start > 0 && _isWordChar(message.codeUnitAt(match.start - 1))) {
+        continue; // `good{Super}` — a branch body, not an argument.
+      }
+      names.add(match.group(1)!);
+    }
+    return names;
+  }
+
+  static final RegExp _argumentPattern = RegExp(
+    r'\{([A-Za-z_][A-Za-z0-9_.-]*)[,}]',
+  );
+
+  static bool _isWordChar(int unit) =>
+      (unit >= 0x41 && unit <= 0x5A) || // A-Z
+      (unit >= 0x61 && unit <= 0x7A) || // a-z
+      (unit >= 0x30 && unit <= 0x39) || // 0-9
+      unit == 0x5F; // _
 }
 
 /// One shape a message can render to, and whether it has literal letters.
@@ -75,7 +115,12 @@ class _IcuParser {
   final String source;
   var _i = 0;
 
-  _IcuParser(this.source);
+  /// Records the argument names it walks past into [arguments].
+  final bool collecting;
+
+  final Set<String> arguments = <String>{};
+
+  _IcuParser(this.source, {this.collecting = false});
 
   bool get atEnd => _i >= source.length;
 
@@ -85,6 +130,9 @@ class _IcuParser {
 
   /// Messages expanding to more branch combinations are treated as malformed.
   static const _maxAlternatives = 256;
+
+  /// Stops for reading an argument name: a comma or a closing brace.
+  static const Set<String> _argNameStops = {',', '}'};
 
   static final _letter = RegExp(r'\p{L}', unicode: true);
 
@@ -142,7 +190,8 @@ class _IcuParser {
   }
 
   List<_Alternative> _argument() {
-    _readUntil(const {',', '}'});
+    final name = _readUntil(_argNameStops).trim();
+    if (collecting) arguments.add(name);
     if (_take('}')) return _wildcard;
     _expect(',');
     final type = _readUntil(const {',', '}'}).trim();

@@ -255,9 +255,29 @@ void main() {
       },
     );
 
-    test('fromConfig still ignores on a valid rule despite an unknown key', () {
-      final ignore = TruncationIgnores.fromConfig({'max_lines': 2, 'bogus': 1});
-      expect(ignore(_issue(maxLines: 1), null), isTrue);
+    test(
+      'fromConfig skips a rule with an unknown key (a typo must not widen it)',
+      () {
+        // A misspelled `text_regexp` next to `max_lines` used to leave
+        // `max_lines` in force, silently ignoring every short truncation.
+        final ignore = TruncationIgnores.fromConfig({
+          'max_lines': 2,
+          'text_regexp': r'^RCP-',
+        });
+        expect(ignore(_issue(maxLines: 1, text: 'anything'), null), isFalse);
+      },
+    );
+
+    test('fromConfig skips a rule with an unsupported overflow value', () {
+      final ignore = TruncationIgnores.fromConfig({'overflow': 'ellipses'});
+      expect(ignore(_issue(overflowMode: 'ellipsis'), null), isFalse);
+    });
+
+    test('fromConfig accepts every supported overflow value', () {
+      for (final mode in ['ellipsis', 'clip', 'fade', 'visible']) {
+        final ignore = TruncationIgnores.fromConfig({'overflow': mode});
+        expect(ignore(_issue(overflowMode: mode), null), isTrue, reason: mode);
+      }
     });
 
     test('SweepConfig.load parses truncation_ignore from YAML', () {
