@@ -159,12 +159,17 @@ class SweepResult {
       renderLocale: json['renderLocale'] as String?,
     ),
     passed: json['passed'] as bool,
-    overflows: (json['overflows'] as List)
-        .map((e) => OverflowError.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    arbIssues: (json['arbIssues'] as List)
-        .map((e) => ArbIssue.fromJson(e as Map<String, dynamic>))
-        .toList(),
+    // Older result files (and results written by other tools) predate these
+    // fields, so treat a missing/corrupt list as "no findings" instead of
+    // throwing and discarding the whole result file.
+    overflows: _decodeList(
+      json['overflows'],
+      (e) => OverflowError.fromJson(e as Map<String, dynamic>),
+    ),
+    arbIssues: _decodeList(
+      json['arbIssues'],
+      (e) => ArbIssue.fromJson(e as Map<String, dynamic>),
+    ),
     truncations:
         (json['truncations'] as List?)
             ?.map((e) => TruncationIssue.fromJson(e as Map<String, dynamic>))
@@ -188,6 +193,16 @@ class SweepResult {
         : null,
   );
 }
+
+/// Decodes an optional JSON list of objects, defaulting to an empty list.
+List<T> _decodeList<T>(Object? value, T Function(Object) decode) =>
+    switch (value) {
+      final List list => [
+        for (final item in list)
+          if (item is Map<String, dynamic>) decode(item),
+      ],
+      _ => const [],
+    };
 
 /// Aggregates [SweepResult]s with summary statistics.
 class SweepRunSummary {
