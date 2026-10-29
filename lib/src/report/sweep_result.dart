@@ -35,6 +35,13 @@ class SweepResult {
   /// Path to the golden screenshot file, if captured.
   final String? screenshotPath;
 
+  /// Path to the image a failing variant actually rendered, if saved.
+  ///
+  /// Golden comparison never writes what it captured, so this is the only
+  /// visual proof for a first run (no baseline yet) or a regression.
+  /// `screenshotPath` keeps pointing at the baseline.
+  final String? actualScreenshotPath;
+
   /// Error message if the test threw an exception.
   final String? errorMessage;
 
@@ -56,6 +63,7 @@ class SweepResult {
     this.truncations = const [],
     this.hardcodedTexts = const [],
     this.screenshotPath,
+    this.actualScreenshotPath,
     this.errorMessage,
     this.failureKind,
     this.duration = Duration.zero,
@@ -72,6 +80,7 @@ class SweepResult {
     truncations: truncations,
     hardcodedTexts: hardcodedTexts,
     screenshotPath: screenshotPath ?? this.screenshotPath,
+    actualScreenshotPath: actualScreenshotPath,
     errorMessage: errorMessage,
     failureKind: failureKind,
     duration: duration,
@@ -138,6 +147,7 @@ class SweepResult {
     'truncations': truncations.map((e) => e.toJson()).toList(),
     'hardcodedTexts': hardcodedTexts.map((e) => e.toJson()).toList(),
     'screenshot': screenshotPath,
+    if (actualScreenshotPath != null) 'actualScreenshot': actualScreenshotPath,
     'error': errorMessage,
     if (failureKind != null) 'failureKind': failureKind!.name,
     'durationMs': duration.inMilliseconds,
@@ -181,6 +191,7 @@ class SweepResult {
             .toList() ??
         const [],
     screenshotPath: json['screenshot'] as String?,
+    actualScreenshotPath: json['actualScreenshot'] as String?,
     errorMessage: json['error'] as String?,
     failureKind: switch (json['failureKind']) {
       'golden' => SweepFailureKind.golden,

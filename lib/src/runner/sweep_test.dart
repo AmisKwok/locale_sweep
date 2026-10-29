@@ -222,11 +222,8 @@ void sweepTest(
     resultFile ??= managedRun
         ? File('${dir.createTempSync('flow_').path}/results.json')
         : File('${dir.path}/${Uri.encodeComponent(flowName)}.json');
-    final payload = flowResults.map((r) => r.toJson()).toList();
     resultFile!.writeAsStringSync(
-      jsonEncode(
-        managedRun ? payload : _mergeWithExisting(resultFile!, payload),
-      ),
+      jsonEncode(flowResults.map((r) => r.toJson()).toList()),
     );
   }
 
@@ -421,12 +418,15 @@ void sweepTest(
         }
 
         // Golden comparison does not persist the image it captured, so a
-        // failing variant (or a first run with no baseline yet) left the
-        // report with "No screenshot". Write the actual PNG next to the
-        // baselines and point the report at it.
+        // failing variant (or a first run with no baseline yet) left nothing
+        // to look at. Save the actual PNG alongside the baselines and record
+        // it separately, so `screenshotPath` keeps pointing at the golden.
+        String? actualScreenshotPath;
         if (captureScreenshots && compareScreenshots && !passed) {
-          screenshotPath =
-              await _writeActualScreenshot(tester, goldenKey) ?? screenshotPath;
+          actualScreenshotPath = await _writeActualScreenshot(
+            tester,
+            goldenKey,
+          );
         }
 
         final result = SweepResult(
@@ -438,6 +438,7 @@ void sweepTest(
           truncations: truncations,
           hardcodedTexts: hardcodedTexts,
           screenshotPath: screenshotPath,
+          actualScreenshotPath: actualScreenshotPath,
           errorMessage: errorMessage,
           failureKind: failureKind,
           duration: stopwatch.elapsed,
@@ -464,34 +465,6 @@ void sweepTest(
     }
   });
 }
-
-/// Merges [payload] into the results already stored in [file].
-///
-/// `flutter test` runs several files concurrently. Without a managed run two
-/// isolates can own the same result file, and a plain overwrite silently
-/// dropped one of them.
-List<Map<String, dynamic>> _mergeWithExisting(
-  File file,
-  List<Map<String, dynamic>> payload,
-) {
-  if (!file.existsSync()) return payload;
-  final superseded = payload.map(_resultKey).toSet();
-  final merged = <Map<String, dynamic>>[];
-  try {
-    for (final item in jsonDecode(file.readAsStringSync()) as List) {
-      if (item is! Map<String, dynamic>) continue;
-      if (superseded.contains(_resultKey(item))) continue;
-      merged.add(item);
-    }
-  } catch (_) {
-    // A partially written or corrupt file is replaced, not propagated.
-  }
-  return [...merged, ...payload];
-}
-
-/// Identifies a stored result so a newer run can replace it in place.
-String _resultKey(Map<String, dynamic> json) =>
-    '${json['flow']}/${json['variant']}';
 
 /// Writes the rendered widget tree to [path] without comparing it to a
 /// golden baseline.

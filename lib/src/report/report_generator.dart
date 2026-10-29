@@ -117,10 +117,13 @@ class ReportGenerator {
         final diffCell = r.diff != null
             ? '${r.diff!.diffPercent.toStringAsFixed(2)}%'
             : '';
-        final screenshotLink = r.screenshotPath != null
+        // Prefer what the variant actually rendered: the golden only exists
+        // once a baseline has been committed.
+        final shownScreenshot = r.actualScreenshotPath ?? r.screenshotPath;
+        final screenshotLink = shownScreenshot != null
             ? (screenshotLinkBuilder != null
-                  ? screenshotLinkBuilder(r.screenshotPath!)
-                  : '![${r.variant.label}](${r.screenshotPath})')
+                  ? screenshotLinkBuilder(shownScreenshot)
+                  : '![${r.variant.label}]($shownScreenshot)')
             : '';
 
         buf.writeln(
@@ -315,9 +318,11 @@ class ReportGenerator {
           'data-status="$status" data-brightness="$brightness">',
         );
 
-        // Screenshot
-        if (r.screenshotPath != null) {
-          var imgPath = r.screenshotPath!;
+        // Screenshot: show what the variant actually rendered when it failed,
+        // otherwise the committed baseline.
+        final shownScreenshot = r.actualScreenshotPath ?? r.screenshotPath;
+        if (shownScreenshot != null) {
+          var imgPath = shownScreenshot;
           if (screenshotBasePath.isNotEmpty &&
               imgPath.startsWith(screenshotBasePath)) {
             imgPath = imgPath.substring(screenshotBasePath.length);

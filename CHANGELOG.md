@@ -14,11 +14,12 @@
   so hand-written ARB files are no longer skipped. Placeholder names are
   matched literally, so `{file.name}` is safe, and ICU branch bodies
   (`good{Super}`) are not mistaken for placeholders.
-- **Failing variants write their actual screenshot** to
-  `.locale_sweep/actual/`, next to the report. Golden comparison never
-  persisted the image it captured, so a failing run (or a first run with no
-  baseline) produced a report full of "No screenshot". Baselines are never
-  overwritten.
+- **Failing variants save their actual screenshot** to
+  `.locale_sweep/actual/`, reported as `actualScreenshotPath` (JSON:
+  `actualScreenshot`) and shown by the reports when present. Golden comparison
+  never persisted the image it captured, so a failing run (or a first run with
+  no baseline yet) had nothing to look at. `screenshotPath` keeps pointing at
+  the baseline, which is never overwritten.
 - **Diff data is produced at every tolerance, including `0`.** The
   `SweepGoldenComparator` was only installed when `tolerance > 0`, so the
   default configuration had an empty Diff % column and no `diff` field in
@@ -53,9 +54,6 @@
   (default 30 minutes) is killed and reported instead of hanging forever, and
   `.locale_sweep/runs/` keeps the 10 most recent runs instead of growing
   without bound.
-- **Concurrent `flutter test` files no longer overwrite each other's results.**
-  Without a managed run, results are merged into the flow's file instead of
-  being clobbered.
 - **ICU messages the parser rejects no longer produce false hardcoded-text
   findings.** Such a message used to be compared literally (and could never
   match, because it still contains `{`); its placeholders are now treated as

@@ -346,9 +346,10 @@ flows into all report formats — percentage column in Markdown, badge + link in
 HTML, structured object in JSON.
 
 Golden comparison never writes the image it captured, so a failing variant also
-writes its actual PNG to `.locale_sweep/actual/`, linked from the report. This
-is what gives a first run (no baselines yet) screenshot proof instead of
-"No screenshot" everywhere. Baselines are never overwritten.
+writes its actual PNG to `.locale_sweep/actual/` (`actualScreenshotPath`, JSON
+`actualScreenshot`) and the reports show it. That is what gives a first run (no
+baselines yet) screenshot proof instead of "No screenshot" everywhere.
+`screenshotPath` keeps pointing at the baseline, which is never overwritten.
 
 ---
 
