@@ -145,11 +145,19 @@ class SweepConfig {
 
     return _applyEnvOverrides(
       SweepConfig(
-        locales:
-            _parseStringList(yaml['locales']) ?? const ['en', 'de', 'ar', 'ja'],
-        textScales: _parseDoubleList(yaml['text_scales']) ?? const [1.0, 2.0],
-        viewports:
-            _parseViewports(yaml['viewports']) ?? const [ViewportPreset.phone],
+        // A key whose entries were all dropped would leave an empty matrix,
+        // which the runner rejects; fall back to the default instead.
+        locales: _orDefault(
+          _parseStringList(yaml['locales'], 'locales'),
+          const ['en', 'de', 'ar', 'ja'],
+        ),
+        textScales: _orDefault(
+          _parseDoubleList(yaml['text_scales'], 'text_scales'),
+          const [1.0, 2.0],
+        ),
+        viewports: _orDefault(_parseViewports(yaml['viewports']), const [
+          ViewportPreset.phone,
+        ]),
         darkMode: yaml['dark_mode'] == true,
         tolerance: _parseDouble(yaml['tolerance']) ?? 0.0,
         screenshotDir:
@@ -158,11 +166,19 @@ class SweepConfig {
         arbDir: _parseString(yaml['arb_dir']),
         baseLocale: _parseString(yaml['base_locale']) ?? 'en',
         untranslatedAllowlist:
-            _parseStringList(yaml['untranslated_allowlist']) ?? const [],
+            _parseStringList(
+              yaml['untranslated_allowlist'],
+              'untranslated_allowlist',
+            ) ??
+            const [],
         truncationIgnoreRaw: _parseIgnoreRules(yaml['truncation_ignore']),
         hardcodedText: yaml['hardcoded_text'] == true,
         hardcodedTextAllowlist:
-            _parseStringList(yaml['hardcoded_text_allowlist']) ?? const [],
+            _parseStringList(
+              yaml['hardcoded_text_allowlist'],
+              'hardcoded_text_allowlist',
+            ) ??
+            const [],
       ),
     );
   }
@@ -201,43 +217,74 @@ class SweepConfig {
   static SweepConfig _applyEnvOverrides(SweepConfig base) {
     final env = Platform.environment;
     return SweepConfig(
-      locales:
-          env['LOCALE_SWEEP_LOCALES']
-              ?.split(',')
-              .map((s) => s.trim())
-              .toList() ??
-          base.locales,
+      // An unset CI variable is usually expanded to an empty string, which
+      // used to produce an empty (and therefore invalid) sweep matrix.
+      locales: _csv(env['LOCALE_SWEEP_LOCALES']) ?? base.locales,
       textScales:
-          env['LOCALE_SWEEP_TEXT_SCALES']
-              ?.split(',')
-              .map((s) => double.tryParse(s.trim()))
-              .whereType<double>()
-              .toList() ??
-          base.textScales,
+          _csvDoubles(env['LOCALE_SWEEP_TEXT_SCALES']) ?? base.textScales,
       viewports: base.viewports,
-      darkMode: env.containsKey('LOCALE_SWEEP_DARK_MODE')
-          ? env['LOCALE_SWEEP_DARK_MODE'] == 'true'
-          : base.darkMode,
-      tolerance: env.containsKey('LOCALE_SWEEP_TOLERANCE')
-          ? (double.tryParse(env['LOCALE_SWEEP_TOLERANCE']!) ?? base.tolerance)
-          : base.tolerance,
+      darkMode: _envBool(env, 'LOCALE_SWEEP_DARK_MODE') ?? base.darkMode,
+      tolerance: _envDouble(env, 'LOCALE_SWEEP_TOLERANCE') ?? base.tolerance,
       screenshotDir: env['LOCALE_SWEEP_SCREENSHOT_DIR'] ?? base.screenshotDir,
       reportDir: env['LOCALE_SWEEP_REPORT_DIR'] ?? base.reportDir,
       arbDir: env['LOCALE_SWEEP_ARB_DIR'] ?? base.arbDir,
       baseLocale: env['LOCALE_SWEEP_BASE_LOCALE'] ?? base.baseLocale,
       untranslatedAllowlist:
-          env['LOCALE_SWEEP_UNTRANSLATED_ALLOWLIST']
-              ?.split(',')
-              .map((s) => s.trim())
-              .where((s) => s.isNotEmpty)
-              .toList() ??
+          _csv(env['LOCALE_SWEEP_UNTRANSLATED_ALLOWLIST']) ??
           base.untranslatedAllowlist,
       truncationIgnoreRaw: base.truncationIgnoreRaw,
-      hardcodedText: env.containsKey('LOCALE_SWEEP_HARDCODED_TEXT')
-          ? env['LOCALE_SWEEP_HARDCODED_TEXT'] == 'true'
-          : base.hardcodedText,
+      hardcodedText:
+          _envBool(env, 'LOCALE_SWEEP_HARDCODED_TEXT') ?? base.hardcodedText,
       hardcodedTextAllowlist: base.hardcodedTextAllowlist,
     );
+  }
+
+  /// Splits a comma-separated environment value, or `null` when it is unset
+  /// or blank (an unset CI variable is usually expanded to an empty string).
+  static List<String>? _csv(String? raw) {
+    if (raw == null) return null;
+    final values = raw
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    return values.isEmpty ? null : values;
+  }
+
+  static List<double>? _csvDoubles(String? raw) {
+    final values = _csv(raw)?.map(double.tryParse).whereType<double>().toList();
+    return (values == null || values.isEmpty) ? null : values;
+  }
+
+  /// Returns [value] unless it is missing or empty, then [fallback].
+  static List<T> _orDefault<T>(List<T>? value, List<T> fallback) =>
+      (value == null || value.isEmpty) ? fallback : value;
+
+  /// Reads a boolean environment variable, accepting `true`/`1`/`yes`.
+  static bool? _envBool(Map<String, String> env, String name) {
+    final raw = env[name];
+    if (raw == null || raw.trim().isEmpty) return null;
+    final value = raw.trim().toLowerCase();
+    if (const {'true', '1', 'yes'}.contains(value)) return true;
+    if (const {'false', '0', 'no'}.contains(value)) return false;
+    stderr.writeln(
+      'Warning: $name="$raw" is not a boolean; falling back to the '
+      'configured value.',
+    );
+    return null;
+  }
+
+  static double? _envDouble(Map<String, String> env, String name) {
+    final raw = env[name];
+    if (raw == null || raw.trim().isEmpty) return null;
+    final value = double.tryParse(raw.trim());
+    if (value == null) {
+      stderr.writeln(
+        'Warning: $name="$raw" is not a number; falling back to the '
+        'configured value.',
+      );
+    }
+    return value;
   }
 
   static double? _parseDouble(dynamic value) {
@@ -250,25 +297,69 @@ class SweepConfig {
     return null;
   }
 
-  static List<String>? _parseStringList(dynamic value) {
+  /// Parses a list of strings, dropping (and reporting) non-string entries.
+  ///
+  /// A single wrong-typed entry used to throw a `TypeError` out of [load],
+  /// which aborted the CLI before any report was written.
+  static List<String>? _parseStringList(dynamic value, String key) {
     if (value is! YamlList) return null;
-    return value.cast<String>().toList();
+    final parsed = <String>[];
+    for (final entry in value) {
+      if (entry is! String) {
+        stderr.writeln(
+          'Warning: dropping non-string entry "$entry" from "$key".',
+        );
+        continue;
+      }
+      parsed.add(entry);
+    }
+    return parsed;
   }
 
-  static List<double>? _parseDoubleList(dynamic value) {
+  static List<double>? _parseDoubleList(dynamic value, String key) {
     if (value is! YamlList) return null;
-    return value.map((e) => (e as num).toDouble()).toList();
+    final parsed = <double>[];
+    for (final entry in value) {
+      if (entry is! num) {
+        stderr.writeln(
+          'Warning: dropping non-numeric entry "$entry" from "$key".',
+        );
+        continue;
+      }
+      parsed.add(entry.toDouble());
+    }
+    return parsed;
   }
 
   static List<ViewportPreset>? _parseViewports(dynamic value) {
     if (value is! YamlList) return null;
-    return value.map((e) {
-      final map = e as YamlMap;
-      return ViewportPreset(
-        name: map['name'] as String,
-        width: (map['width'] as num).toDouble(),
-        height: (map['height'] as num).toDouble(),
+    final parsed = <ViewportPreset>[];
+    for (final entry in value) {
+      if (entry is! YamlMap) {
+        stderr.writeln(
+          'Warning: dropping viewport "$entry" — every viewport needs '
+          'name, width and height.',
+        );
+        continue;
+      }
+      final name = entry['name'];
+      final width = entry['width'];
+      final height = entry['height'];
+      if (name is! String || width is! num || height is! num) {
+        stderr.writeln(
+          'Warning: dropping viewport "$entry" — name must be a string and '
+          'width/height must be numbers.',
+        );
+        continue;
+      }
+      parsed.add(
+        ViewportPreset(
+          name: name,
+          width: width.toDouble(),
+          height: height.toDouble(),
+        ),
       );
-    }).toList();
+    }
+    return parsed;
   }
 }

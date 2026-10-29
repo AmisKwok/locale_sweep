@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -56,6 +57,12 @@ Future<void> _main(List<String> args) async {
     (p) => p.addOption(
       'packages',
       help: 'Comma-separated package directories (monorepo)',
+    ),
+    (p) => p.addOption(
+      'timeout',
+      help:
+          'Abort the flutter test run after this many seconds. Optional: when '
+          'omitted the run is unbounded and the CI job timeout applies.',
     ),
   ];
 
@@ -127,6 +134,9 @@ Future<void> _main(List<String> args) async {
     _scanPackages(parsed.command!);
   }
 }
+
+/// How many `.locale_sweep/runs/*` directories are kept.
+const _keptRuns = 10;
 
 Set<String> _failureCategories(ArgResults args) {
   final categories =
@@ -273,6 +283,12 @@ Future<ParsedReport> _runInDirectory(
       }
       files = selection.files.map(File.new).toList();
       namePattern = selection.namePattern;
+      if (selection.matchedByFileNameOnly) {
+        stderr.writeln(
+          'Warning: --flows matched file name(s) only; every sweep flow '
+          'declared in ${selection.files.join(', ')} will run.',
+        );
+      }
     }
     files.sort((a, b) => a.path.compareTo(b.path));
     if (files.isEmpty) {
@@ -281,6 +297,7 @@ Future<ParsedReport> _runInDirectory(
     final runs = Directory(p.join(dir, '.locale_sweep', 'runs'))
       ..createSync(recursive: true);
     final runDir = runs.createTempSync('run_');
+    _pruneRuns(runs);
     final resultsDir = p.join(runDir.path, 'results');
     final flutterArgs = <String>[
       'test',
@@ -298,16 +315,11 @@ Future<ParsedReport> _runInDirectory(
     stdout.writeln('Config: $configPath');
     stdout.writeln('${files.length} test file(s)');
     if (verbose) stdout.writeln('flutter ${flutterArgs.join(' ')}');
-    final process = await Process.start(
-      'flutter',
-      flutterArgs,
-      workingDirectory: dir,
-      environment: {
-        'LOCALE_SWEEP_CONFIG': configPath,
-        'LOCALE_SWEEP_RESULTS_DIR': resultsDir,
-        'LOCALE_SWEEP_MANAGED_RUN': 'true',
-      },
-    );
+    final process = await _startFlutter(flutterArgs, dir, {
+      'LOCALE_SWEEP_CONFIG': configPath,
+      'LOCALE_SWEEP_RESULTS_DIR': resultsDir,
+      'LOCALE_SWEEP_MANAGED_RUN': 'true',
+    });
     final stdoutBuf = StringBuffer();
     final stderrBuf = StringBuffer();
     var completed = false;
@@ -335,7 +347,10 @@ Future<ParsedReport> _runInDirectory(
       stderrBuf.write(data);
       if (verbose) stderr.write(data);
     });
-    final code = await process.exitCode;
+    // A hung golden wait or font download used to block the CLI forever.
+    final timeout = _runTimeout(args);
+    final exit = await _waitForExit(process, timeout);
+    final code = exit.code;
     await Future.wait([stdoutDone, stderrDone]);
     if (!verbose && finished > 0) stdout.writeln();
     // Keep the process transcript next to the isolated results for diagnosis.
@@ -353,6 +368,12 @@ Future<ParsedReport> _runInDirectory(
         'See ${p.join(runDir.path, 'flutter.jsonl')} and stderr.log.',
       );
       if (!verbose && stderrBuf.isNotEmpty) stderr.write(stderrBuf);
+    }
+    if (exit.timedOut) {
+      executionErrors.add(
+        'flutter test was killed after ${timeout!.inSeconds}s. '
+        'Raise the limit with --timeout <seconds>.',
+      );
     }
     if (!completed) {
       executionErrors.add('Flutter did not complete its test run.');
@@ -386,6 +407,110 @@ Future<ParsedReport> _runInDirectory(
   return report;
 }
 
+/// Starts `flutter test`.
+///
+/// On Windows the SDK entry point is `flutter.bat`, which [Process.start]
+/// does not resolve from `PATH` (it does not apply `PATHEXT`), so the run
+/// failed with "The system cannot find the file specified" before any test
+/// executed.
+Future<Process> _startFlutter(
+  List<String> args,
+  String workingDirectory,
+  Map<String, String> environment,
+) async {
+  try {
+    return await Process.start(
+      'flutter',
+      args,
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
+  } on ProcessException {
+    return Process.start(
+      'flutter.bat',
+      args,
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
+  }
+}
+
+/// Reads `--timeout`.
+///
+/// The timeout is opt-in: when omitted the run is unbounded, so sweeps that
+/// currently pass (large matrices, monorepos) keep working and the CI job
+/// timeout is the only backstop. An invalid value is surfaced as a usage error
+/// rather than silently falling back to a default.
+Duration? _runTimeout(ArgResults args) {
+  final raw = args['timeout'] as String?;
+  if (raw == null || raw.isEmpty) return null;
+  final seconds = int.tryParse(raw);
+  if (seconds == null || seconds <= 0) {
+    throw FormatException(
+      '--timeout must be a positive number of seconds (got "$raw").',
+    );
+  }
+  return Duration(seconds: seconds);
+}
+
+/// Waits for [process], terminating it when [timeout] elapses.
+///
+/// [timeout] may be null for an unbounded wait. When the bound is hit the
+/// process is killed; if it survives that, it is escalated to SIGKILL so a hung
+/// golden wait or font download cannot keep the CLI open forever.
+Future<({int code, bool timedOut})> _waitForExit(
+  Process process,
+  Duration? timeout,
+) async {
+  if (timeout == null) {
+    return (code: await process.exitCode, timedOut: false);
+  }
+  try {
+    return (code: await process.exitCode.timeout(timeout), timedOut: false);
+  } on TimeoutException {
+    stderr.writeln(
+      'Error: flutter test exceeded ${timeout.inSeconds}s; terminating it.',
+    );
+    process.kill();
+    const killGrace = Duration(seconds: 10);
+    final code = await process.exitCode.timeout(
+      killGrace,
+      onTimeout: () {
+        process.kill(ProcessSignal.sigkill);
+        return -1;
+      },
+    );
+    return (code: code, timedOut: true);
+  }
+}
+
+/// Deletes the oldest run directories, keeping the [_keptRuns] most recent.
+///
+/// Every run writes a transcript plus its result files here, so an unpruned
+/// directory grows without bound on CI.
+void _pruneRuns(Directory runs) {
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  final directories = runs.listSync().whereType<Directory>().toList();
+  final modified = <Directory, DateTime>{};
+  for (final directory in directories) {
+    try {
+      modified[directory] = directory.statSync().modified;
+    } catch (_) {
+      modified[directory] = epoch;
+    }
+  }
+  directories.sort(
+    (a, b) => (modified[b] ?? epoch).compareTo(modified[a] ?? epoch),
+  );
+  for (final directory in directories.skip(_keptRuns)) {
+    try {
+      directory.deleteSync(recursive: true);
+    } catch (_) {
+      // A locked or already-removed directory is not worth failing over.
+    }
+  }
+}
+
 void _writeReport(ParsedReport report, String output, {String? packageDir}) {
   Directory(output).createSync(recursive: true);
   // Screenshot paths in results are relative to the package directory, but
@@ -398,13 +523,19 @@ void _writeReport(ParsedReport report, String output, {String? packageDir}) {
   var html = report.html;
   var markdown = report.markdown;
   for (final result in report.results) {
-    final screenshot = result.screenshotPath;
-    if (screenshot == null || screenshot.isEmpty) continue;
-    final rewritten = p.posix.joinAll(
-      p.split(p.normalize(p.join(base, screenshot))),
-    );
-    html = html.replaceAll('src="$screenshot"', 'src="$rewritten"');
-    markdown = markdown.replaceAll(']($screenshot)', ']($rewritten)');
+    for (final path in {
+      result.screenshotPath,
+      result.actualScreenshotPath,
+      result.diff?.diffImagePath,
+    }) {
+      if (path == null || path.isEmpty) continue;
+      final rewritten = p.posix.joinAll(
+        p.split(p.normalize(p.join(base, path))),
+      );
+      html = html.replaceAll('src="$path"', 'src="$rewritten"');
+      html = html.replaceAll('href="$path"', 'href="$rewritten"');
+      markdown = markdown.replaceAll(']($path)', ']($rewritten)');
+    }
   }
   File(p.join(output, 'report.md')).writeAsStringSync(markdown);
   File(p.join(output, 'report.json')).writeAsStringSync(report.json);
@@ -412,18 +543,28 @@ void _writeReport(ParsedReport report, String output, {String? packageDir}) {
   stdout.writeln('Report: ${p.join(output, 'report.html')}');
 }
 
-/// Rewrites a package-relative screenshot path to one relative to the CLI
+/// Rewrites package-relative screenshot paths to ones relative to the CLI
 /// working directory.
 SweepResult _rebaseScreenshotPath(SweepResult result, String packageDir) {
-  final screenshot = result.screenshotPath;
-  if (screenshot == null || screenshot.isEmpty || p.isAbsolute(screenshot)) {
-    return result;
+  String? rebase(String? path) {
+    if (path == null || path.isEmpty || p.isAbsolute(path)) return path;
+    final absolute = p.normalize(p.join(packageDir, path));
+    return p.posix.joinAll(
+      p.split(p.relative(absolute, from: p.absolute('.'))),
+    );
   }
-  final absolute = p.normalize(p.join(packageDir, screenshot));
-  final rebased = p.posix.joinAll(
-    p.split(p.relative(absolute, from: p.absolute('.'))),
+
+  var diff = result.diff;
+  final diffImage = diff?.diffImagePath;
+  if (diff != null && diffImage != null && diffImage.isNotEmpty) {
+    diff = diff.withDiffImagePath(rebase(diffImage)!);
+  }
+
+  return result.copyWith(
+    screenshotPath: rebase(result.screenshotPath),
+    actualScreenshotPath: rebase(result.actualScreenshotPath),
+    diff: diff,
   );
-  return result.copyWith(screenshotPath: rebased);
 }
 
 Future<void> _mergeShards(ArgResults args) async {

@@ -10,10 +10,16 @@ class FlowSelection {
   /// Flow names declared in the scanned sources, for error messages.
   final Set<String> declaredFlows;
 
+  /// True when at least one selected file was matched by its name only, so it
+  /// runs unfiltered and may execute flows the user did not name. The caller
+  /// prints the warning; this stays a pure function.
+  final bool matchedByFileNameOnly;
+
   const FlowSelection({
     required this.files,
     required this.namePattern,
     required this.declaredFlows,
+    this.matchedByFileNameOnly = false,
   });
 }
 
@@ -43,7 +49,9 @@ FlowSelection selectFlows(Map<String, String> sources, Set<String> names) {
   }
 
   // A file matched only by its name may declare flows under other names
-  // (or computed names), so it must run unfiltered.
+  // (or computed names), so it must run unfiltered. Flag it for the caller to
+  // warn about: silently running every flow in the file is wider than the user
+  // asked for.
   final namePattern = matchedByFileNameOnly || matchedByDeclaration.isEmpty
       ? null
       : '^sweep: (?:${matchedByDeclaration.map((n) {
@@ -55,5 +63,6 @@ FlowSelection selectFlows(Map<String, String> sources, Set<String> names) {
     files: files,
     namePattern: namePattern,
     declaredFlows: declared,
+    matchedByFileNameOnly: matchedByFileNameOnly,
   );
 }
