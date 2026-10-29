@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -56,6 +57,12 @@ Future<void> _main(List<String> args) async {
     (p) => p.addOption(
       'packages',
       help: 'Comma-separated package directories (monorepo)',
+    ),
+    (p) => p.addOption(
+      'timeout',
+      help:
+          'Abort the flutter test run after this many seconds '
+          '(default: ${_defaultRunTimeout.inSeconds})',
     ),
   ];
 
@@ -127,6 +134,12 @@ Future<void> _main(List<String> args) async {
     _scanPackages(parsed.command!);
   }
 }
+
+/// How long a `flutter test` run may take before it is killed.
+const _defaultRunTimeout = Duration(minutes: 30);
+
+/// How many `.locale_sweep/runs/*` directories are kept.
+const _keptRuns = 10;
 
 Set<String> _failureCategories(ArgResults args) {
   final categories =
@@ -281,6 +294,7 @@ Future<ParsedReport> _runInDirectory(
     final runs = Directory(p.join(dir, '.locale_sweep', 'runs'))
       ..createSync(recursive: true);
     final runDir = runs.createTempSync('run_');
+    _pruneRuns(runs);
     final resultsDir = p.join(runDir.path, 'results');
     final flutterArgs = <String>[
       'test',
@@ -298,16 +312,11 @@ Future<ParsedReport> _runInDirectory(
     stdout.writeln('Config: $configPath');
     stdout.writeln('${files.length} test file(s)');
     if (verbose) stdout.writeln('flutter ${flutterArgs.join(' ')}');
-    final process = await Process.start(
-      'flutter',
-      flutterArgs,
-      workingDirectory: dir,
-      environment: {
-        'LOCALE_SWEEP_CONFIG': configPath,
-        'LOCALE_SWEEP_RESULTS_DIR': resultsDir,
-        'LOCALE_SWEEP_MANAGED_RUN': 'true',
-      },
-    );
+    final process = await _startFlutter(flutterArgs, dir, {
+      'LOCALE_SWEEP_CONFIG': configPath,
+      'LOCALE_SWEEP_RESULTS_DIR': resultsDir,
+      'LOCALE_SWEEP_MANAGED_RUN': 'true',
+    });
     final stdoutBuf = StringBuffer();
     final stderrBuf = StringBuffer();
     var completed = false;
@@ -335,7 +344,10 @@ Future<ParsedReport> _runInDirectory(
       stderrBuf.write(data);
       if (verbose) stderr.write(data);
     });
-    final code = await process.exitCode;
+    // A hung golden wait or font download used to block the CLI forever.
+    final timeout = _runTimeout(args);
+    final exit = await _waitForExit(process, timeout);
+    final code = exit.code;
     await Future.wait([stdoutDone, stderrDone]);
     if (!verbose && finished > 0) stdout.writeln();
     // Keep the process transcript next to the isolated results for diagnosis.
@@ -353,6 +365,12 @@ Future<ParsedReport> _runInDirectory(
         'See ${p.join(runDir.path, 'flutter.jsonl')} and stderr.log.',
       );
       if (!verbose && stderrBuf.isNotEmpty) stderr.write(stderrBuf);
+    }
+    if (exit.timedOut) {
+      executionErrors.add(
+        'flutter test was killed after ${timeout.inSeconds}s. '
+        'Raise the limit with --timeout <seconds>.',
+      );
     }
     if (!completed) {
       executionErrors.add('Flutter did not complete its test run.');
@@ -384,6 +402,84 @@ Future<ParsedReport> _runInDirectory(
     );
   }
   return report;
+}
+
+/// Starts `flutter test`.
+///
+/// On Windows the SDK entry point is `flutter.bat`, which [Process.start]
+/// does not resolve from `PATH` (it does not apply `PATHEXT`), so the run
+/// failed with "The system cannot find the file specified" before any test
+/// executed.
+Future<Process> _startFlutter(
+  List<String> args,
+  String workingDirectory,
+  Map<String, String> environment,
+) async {
+  try {
+    return await Process.start(
+      'flutter',
+      args,
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
+  } on ProcessException {
+    return Process.start(
+      'flutter.bat',
+      args,
+      workingDirectory: workingDirectory,
+      environment: environment,
+    );
+  }
+}
+
+/// Reads `--timeout`, falling back to [_defaultRunTimeout].
+Duration _runTimeout(ArgResults args) {
+  final seconds = int.tryParse(args['timeout'] as String? ?? '');
+  if (seconds == null || seconds <= 0) return _defaultRunTimeout;
+  return Duration(seconds: seconds);
+}
+
+/// Waits for [process], killing it when it exceeds [timeout].
+Future<({int code, bool timedOut})> _waitForExit(
+  Process process,
+  Duration timeout,
+) async {
+  try {
+    return (code: await process.exitCode.timeout(timeout), timedOut: false);
+  } on TimeoutException {
+    stderr.writeln(
+      'Error: flutter test exceeded ${timeout.inSeconds}s; killing it.',
+    );
+    process.kill();
+    return (code: await process.exitCode, timedOut: true);
+  }
+}
+
+/// Deletes the oldest run directories, keeping the [_keptRuns] most recent.
+///
+/// Every run writes a transcript plus its result files here, so an unpruned
+/// directory grows without bound on CI.
+void _pruneRuns(Directory runs) {
+  final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+  final directories = runs.listSync().whereType<Directory>().toList();
+  final modified = <Directory, DateTime>{};
+  for (final directory in directories) {
+    try {
+      modified[directory] = directory.statSync().modified;
+    } catch (_) {
+      modified[directory] = epoch;
+    }
+  }
+  directories.sort(
+    (a, b) => (modified[b] ?? epoch).compareTo(modified[a] ?? epoch),
+  );
+  for (final directory in directories.skip(_keptRuns)) {
+    try {
+      directory.deleteSync(recursive: true);
+    } catch (_) {
+      // A locked or already-removed directory is not worth failing over.
+    }
+  }
 }
 
 void _writeReport(ParsedReport report, String output, {String? packageDir}) {
