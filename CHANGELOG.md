@@ -1,3 +1,67 @@
+## Unreleased
+
+- **ARB files that cannot be read are reported** instead of being treated as
+  empty. A broken base ARB used to yield an empty key set and silently pass
+  every check; it now produces an `parseError` finding (`ArbIssueType`). A
+  broken target ARB no longer reports every base key as `missing`.
+- **ARB file names with subtags are recognized** — `app_zh_Hans.arb`,
+  `app_zh_Hant_CN.arb`, `app_es_419.arb`, `app_fil.arb`, `en.arb` and
+  `app_en-US.arb` are all loaded now (previously only `app_en.arb` /
+  `app_en_US.arb`, and everything else was skipped as "No ARB file").
+- **Placeholder checks are two-way and metadata optional.** A placeholder that
+  exists only in the target (`{nmae}`) is reported, and when `@key.placeholders`
+  metadata is absent the placeholders are read from the base message itself,
+  so hand-written ARB files are no longer skipped. Placeholder names are
+  matched literally, so `{file.name}` is safe, and ICU branch bodies
+  (`good{Super}`) are not mistaken for placeholders.
+- **Failing variants write their actual screenshot** to
+  `.locale_sweep/actual/`, next to the report. Golden comparison never
+  persisted the image it captured, so a failing run (or a first run with no
+  baseline) produced a report full of "No screenshot". Baselines are never
+  overwritten.
+- **Diff data is produced at every tolerance, including `0`.** The
+  `SweepGoldenComparator` was only installed when `tolerance > 0`, so the
+  default configuration had an empty Diff % column and no `diff` field in
+  `report.json`. Golden lookup also falls back to the classic
+  `LocalFileComparator` layout, which fixes missing diffs for tests that live
+  in a subdirectory.
+- **`truncation_ignore` rules with an unknown key are skipped** instead of
+  being applied with the remaining fields — a misspelled `text_regexp` next to
+  a valid `max_lines` used to ignore every short truncation. An unsupported
+  `overflow` value (`ellipses`) is rejected with a warning too, instead of
+  silently disabling the rule.
+- **ARB findings are reported once**, on the variant of the locale they belong
+  to. A single missing base file used to be duplicated across every locale ×
+  scale × viewport × brightness combination.
+- **Malformed `locale_sweep.yaml` no longer aborts the run.** Wrong-typed
+  entries (`locales: [en, 1]`, `text_scales: ["2.0"]`, a viewport without
+  `width`) are dropped with a warning and the default is used when nothing
+  valid is left, instead of throwing a `TypeError` before any report is
+  written. Empty `LOCALE_SWEEP_*` variables (an unset CI variable) fall back
+  to the configured value, and boolean variables accept `true`/`1`/`yes`.
+- **Older result files still load.** `SweepResult.fromJson` tolerates a result
+  without `overflows` / `arbIssues` instead of discarding the whole file.
+- **Screenshots and reports are escaped.** `|` and newlines in Markdown table
+  cells, and `"`, `'`, `<`, `>` in HTML attributes no longer break the report.
+- **Framework exceptions are no longer dropped** — every exception recorded in
+  a frame is drained (the extra ones are reported on stderr) instead of only
+  the first one.
+- **`--flows` says when it widens the run.** Matching a file name only
+  (`--flows login` for `login_test.dart` declaring `sign_in`) runs every flow
+  in that file; that is now reported on stderr.
+- **`flutter test` is bounded.** A run that exceeds `--timeout <seconds>`
+  (default 30 minutes) is killed and reported instead of hanging forever, and
+  `.locale_sweep/runs/` keeps the 10 most recent runs instead of growing
+  without bound.
+- **Concurrent `flutter test` files no longer overwrite each other's results.**
+  Without a managed run, results are merged into the flow's file instead of
+  being clobbered.
+- **ICU messages the parser rejects no longer produce false hardcoded-text
+  findings.** Such a message used to be compared literally (and could never
+  match, because it still contains `{`); its placeholders are now treated as
+  wildcards. Rendered text is also matched against a cache, so a large ARB is
+  not re-matched for every duplicate string.
+
 ## 0.7.2
 
 - **Pseudo-localization** — add `pseudo` to `locales` to render the base

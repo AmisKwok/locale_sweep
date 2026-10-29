@@ -192,6 +192,13 @@ reported too. They usually need a single message with a placeholder instead.
 Hardcoded text is advisory, like truncations (see [`--fail-on`](#--fail-on)).
 Also configurable via YAML (`hardcoded_text: true`).
 
+> **Known limitation:** copy that comes from Flutter itself — Material and
+> Cupertino labels such as dialog buttons, tooltips and the date picker — is
+> not in your ARB files and will be reported. Framework-owned text cannot be
+> told apart from your own `Text` widgets (both are framework `Text`
+> elements), so exempt it with `hardcoded_text_allowlist`, for example
+> `["^OK$", "^CANCEL$", "^Close$"]`.
+
 ## Localizations integration
 
 Test individual screens with `AppLocalizations.of(context)` — no `MaterialApp` wrapper needed:
@@ -332,7 +339,16 @@ sweepTest(
 
 Also configurable via YAML: `tolerance: 0.5`
 
-When pixels differ, a 3-panel diff image (Golden | Actual | Diff) is saved to `.locale_sweep/diffs/`. Diff data flows into all report formats — percentage column in Markdown, badge + link in HTML, structured object in JSON.
+Every comparison produces diff data, including the default `tolerance: 0`
+(where any pixel difference is a failure). When pixels differ, a 3-panel diff
+image (Golden | Actual | Diff) is saved to `.locale_sweep/diffs/`. Diff data
+flows into all report formats — percentage column in Markdown, badge + link in
+HTML, structured object in JSON.
+
+Golden comparison never writes the image it captured, so a failing variant also
+writes its actual PNG to `.locale_sweep/actual/`, linked from the report. This
+is what gives a first run (no baselines yet) screenshot proof instead of
+"No screenshot" everywhere. Baselines are never overwritten.
 
 ---
 
@@ -420,6 +436,11 @@ truncation_ignore:
 A rule matches only when **all** of its fields match the issue; the issue is
 ignored if **any** rule matches. `overflow` must be one of `ellipsis` / `clip` /
 `fade` / `visible` (matching `TruncationIssue.overflowMode`).
+
+A rule with an unknown key (a typo such as `text_regexp`) or an unsupported
+`overflow` value is **skipped with a warning on stderr** rather than applied
+with its remaining fields — otherwise a typo next to a valid `max_lines` would
+ignore far more than intended.
 
 For advanced cases that reference a widget type or key, pass `ignoreTruncation`
 to `sweepTest` using the `TruncationIgnores` helpers:
@@ -588,6 +609,7 @@ dart run locale_sweep run --github-pr                     # Post PR comment
 dart run locale_sweep run --fail-on overflow,golden       # Selective failure
 dart run locale_sweep run --config my_config.yaml         # Custom config
 dart run locale_sweep run --verbose                       # Print flutter test output
+dart run locale_sweep run --timeout 600                   # Kill the run after 10 min
 dart run locale_sweep run --shards 3 --shard-index 0      # Parallel shard
 dart run locale_sweep run --packages apps/a,apps/b        # Monorepo
 dart run locale_sweep update                              # Regenerate baselines
