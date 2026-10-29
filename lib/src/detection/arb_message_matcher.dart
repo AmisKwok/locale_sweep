@@ -3,9 +3,13 @@
 /// Literal messages are compared exactly. Messages with ICU arguments are
 /// compiled to patterns: `{name}` matches any text, and each `plural` /
 /// `select` branch becomes an alternative (`#` matches the plural count).
+/// Pattern fragment standing in for the text an ICU argument renders to.
+const _any = '.*?';
+
 class ArbMessageMatcher {
   final Set<String> _literals;
   final List<RegExp> _patterns;
+  final Map<String, bool> _cache = {};
 
   ArbMessageMatcher._(this._literals, this._patterns);
 
@@ -20,12 +24,13 @@ class ArbMessageMatcher {
         literals.add(trimmed);
         continue;
       }
-      final pattern = toPattern(trimmed);
-      if (pattern != null) {
-        patterns.add(RegExp('^$pattern\$', dotAll: true, unicode: true));
-      } else {
-        literals.add(trimmed);
-      }
+      // A message the ICU parser rejects (escaped `'{'`, non-ICU braces,
+      // unsupported syntax) must not become a literal: it still contains `{`,
+      // so it could never equal rendered text and every string produced by
+      // that message would be reported as hardcoded. Treat its placeholders
+      // as wildcards instead.
+      final pattern = toPattern(trimmed) ?? _wildcardPattern(trimmed);
+      patterns.add(RegExp('^$pattern\$', dotAll: true, unicode: true));
     }
     return ArbMessageMatcher._(literals, patterns);
   }
@@ -33,8 +38,43 @@ class ArbMessageMatcher {
   /// Whether [text] could have been produced by one of the messages.
   bool matches(String text) {
     final trimmed = text.trim();
-    return _literals.contains(trimmed) ||
-        _patterns.any((p) => p.hasMatch(trimmed));
+    // Rendered text repeats across paragraphs; caching keeps a large ARB from
+    // being re-matched against every duplicate string.
+    return _cache.putIfAbsent(
+      trimmed,
+      () =>
+          _literals.contains(trimmed) ||
+          _patterns.any((p) => p.hasMatch(trimmed)),
+    );
+  }
+
+  /// Fallback for messages [toPattern] cannot parse: keeps the literal text
+  /// and turns every `{...}` group into a wildcard match.
+  static String _wildcardPattern(String message) {
+    final buf = StringBuffer();
+    var i = 0;
+    while (i < message.length) {
+      if (message[i] == '{') {
+        var depth = 0;
+        while (i < message.length) {
+          final char = message[i];
+          if (char == '{') {
+            depth++;
+          } else if (char == '}') {
+            depth--;
+            i++;
+            if (depth == 0) break;
+            continue;
+          }
+          i++;
+        }
+        buf.write(_any);
+        continue;
+      }
+      buf.write(RegExp.escape(message[i]));
+      i++;
+    }
+    return buf.toString();
   }
 
   /// Converts an ICU message to a regular-expression source, or `null` when
@@ -57,8 +97,6 @@ class _IcuParser {
   _IcuParser(this.source);
 
   bool get atEnd => _i >= source.length;
-
-  static const _any = '.*?';
 
   String message({required bool inPlural, required bool nested}) {
     final buf = StringBuffer();
