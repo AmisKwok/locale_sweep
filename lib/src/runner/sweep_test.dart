@@ -21,6 +21,14 @@ import 'sweep_variant.dart';
 /// Default directory where sweep results are written for CLI consumption.
 const sweepResultsDir = '.locale_sweep/results';
 
+/// Directory where the actual screenshot of a failing variant is written.
+///
+/// Golden comparison never writes the image it captured, so a failing (or
+/// first-ever) run used to leave the report without any screenshot proof.
+/// Actuals are kept out of the screenshot directory so baselines are never
+/// overwritten.
+const actualScreenshotsDir = '.locale_sweep/actual';
+
 final _allResults = <SweepResult>[];
 
 /// Returns all results recorded by [sweepTest] in this test isolate.
@@ -199,6 +207,18 @@ void sweepTest(
     );
   }
 
+  // ARB findings belong to the locale they were found in. When the base
+  // locale is not part of the matrix its findings would otherwise be lost,
+  // so they are attached to the first variant that actually runs.
+  final baseLocaleNotTested = !effectiveLocales.contains(effectiveBaseLocale);
+  SweepVariant? firstRunVariant;
+  for (final variant in variants) {
+    if (skip == null || !(skip(variant))) {
+      firstRunVariant = variant;
+      break;
+    }
+  }
+
   final flowResults = <SweepResult>[];
   File? resultFile;
 
@@ -247,13 +267,21 @@ void sweepTest(
         DiffResult? diffResult;
 
         if (arbReport != null) {
+          // Reporting base-locale findings on every variant multiplied a
+          // single missing file across the whole matrix.
+          final reportsBaseLocale =
+              baseLocaleNotTested && variant == firstRunVariant;
           arbIssues.addAll(
             arbReport.issues.where(
               (i) =>
-                  i.locale == variant.locale || i.locale == effectiveBaseLocale,
+                  i.locale == variant.locale ||
+                  (reportsBaseLocale && i.locale == effectiveBaseLocale),
             ),
           );
         }
+
+        final goldenKey =
+            '$effectiveScreenshotDir/${variant.screenshotPath(flowName)}';
 
         overflowDetector.install();
 
@@ -331,8 +359,6 @@ void sweepTest(
           if (frameworkError != null) throw frameworkError;
 
           if (captureScreenshots) {
-            final goldenKey =
-                '$effectiveScreenshotDir/${variant.screenshotPath(flowName)}';
             // Golden keys resolve relative to the test file's directory.
             // Store the package-relative location so reports can link to the
             // file that was actually written.
@@ -341,16 +367,16 @@ void sweepTest(
             if (!compareScreenshots) {
               await _writeScreenshot(tester, screenshotPath);
             } else {
-              SweepGoldenComparator? sweepComparator;
+              // Always diff, including at tolerance 0: the report needs the
+              // Diff % column and JSON `diff` field even when every pixel
+              // difference is a failure.
               final originalComparator = goldenFileComparator;
-              if (effectiveTolerance > 0) {
-                sweepComparator = SweepGoldenComparator(
-                  delegate: originalComparator,
-                  tolerance: effectiveTolerance,
-                  diffOutputDir: diffOutputDir,
-                );
-                goldenFileComparator = sweepComparator;
-              }
+              final sweepComparator = SweepGoldenComparator(
+                delegate: originalComparator,
+                tolerance: effectiveTolerance,
+                diffOutputDir: diffOutputDir,
+              );
+              goldenFileComparator = sweepComparator;
 
               try {
                 await expectLater(
@@ -361,10 +387,8 @@ void sweepTest(
                 failureKind = SweepFailureKind.golden;
                 rethrow;
               } finally {
-                if (sweepComparator != null) {
-                  goldenFileComparator = originalComparator;
-                  diffResult = sweepComparator.lastDiffResult;
-                }
+                goldenFileComparator = originalComparator;
+                diffResult = sweepComparator.lastDiffResult;
               }
             }
           }
@@ -383,6 +407,18 @@ void sweepTest(
           passed = false;
         }
 
+        // Golden comparison does not persist the image it captured, so a
+        // failing variant (or a first run with no baseline yet) left nothing
+        // to look at. Save the actual PNG alongside the baselines and record
+        // it separately, so `screenshotPath` keeps pointing at the golden.
+        String? actualScreenshotPath;
+        if (captureScreenshots && compareScreenshots && !passed) {
+          actualScreenshotPath = await _writeActualScreenshot(
+            tester,
+            goldenKey,
+          );
+        }
+
         final result = SweepResult(
           flowName: flowName,
           variant: variant,
@@ -392,6 +428,7 @@ void sweepTest(
           truncations: truncations,
           hardcodedTexts: hardcodedTexts,
           screenshotPath: screenshotPath,
+          actualScreenshotPath: actualScreenshotPath,
           errorMessage: errorMessage,
           failureKind: failureKind,
           duration: stopwatch.elapsed,
@@ -433,6 +470,29 @@ Future<void> _writeScreenshot(WidgetTester tester, String path) async {
   final file = File(path);
   file.parent.createSync(recursive: true);
   file.writeAsBytesSync(bytes.buffer.asUint8List());
+}
+
+/// Writes the rendered image of a failing variant to [actualScreenshotsDir],
+/// mirroring the golden's file name so a report reader can find it.
+///
+/// Returns the written path, or `null` when the tree is gone (for example
+/// after a layout exception) so the golden path stays in the report.
+Future<String?> _writeActualScreenshot(
+  WidgetTester tester,
+  String goldenKey,
+) async {
+  final name = goldenKey.contains('/')
+      ? goldenKey.substring(goldenKey.lastIndexOf('/') + 1)
+      : goldenKey;
+  final path = p.posix.join(actualScreenshotsDir, name);
+  try {
+    await _writeScreenshot(tester, path);
+    return path;
+  } catch (_) {
+    // Capturing is best effort: never turn a diagnostic screenshot into a
+    // second, confusing failure (the tree may already be torn down).
+    return null;
+  }
 }
 
 /// Captures the nearest repaint boundary above [element].
