@@ -216,10 +216,18 @@ class SweepGoldenComparator implements GoldenFileComparator {
     this.diffOutputDir = '.locale_sweep/diffs',
   }) : _delegate = delegate;
 
+  /// Resolves [golden] through the delegate.
+  ///
+  /// `LocalFileComparator` keeps the key unresolved when it carries no
+  /// scheme, so the baseline is looked up next to `basedir` as well. Missing
+  /// the file silently disabled diffing for every variant.
   File _resolveGoldenFile(Uri golden) {
     if (_delegate is LocalFileComparator) {
       final basedir = _delegate.basedir;
-      return File(path.join(path.fromUri(basedir), path.fromUri(golden)));
+      final joined = File(
+        path.join(path.fromUri(basedir), path.fromUri(golden)),
+      );
+      if (joined.existsSync()) return joined;
     }
     final resolved = _delegate.getTestUri(golden, null);
     if (resolved.scheme == 'file') return File.fromUri(resolved);

@@ -334,7 +334,16 @@ sweepTest(
 
 Also configurable via YAML: `tolerance: 0.5`
 
-When pixels differ, a 3-panel diff image (Golden | Actual | Diff) is saved to `.locale_sweep/diffs/`. Diff data flows into all report formats — percentage column in Markdown, badge + link in HTML, structured object in JSON.
+Every comparison produces diff data, including the default `tolerance: 0` (where
+any pixel difference is a failure). When pixels differ, a 3-panel diff image
+(Golden | Actual | Diff) is saved to `.locale_sweep/diffs/`. Diff data flows into
+all report formats — percentage column in Markdown, badge + link in HTML,
+structured object in JSON.
+
+Golden comparison never writes the image it captured, so a failing variant also
+writes its actual PNG to `.locale_sweep/actual/` and the reports link to it. That
+is what gives a first run (no baselines yet) screenshot proof instead of
+"No screenshot" everywhere. Baselines are never overwritten.
 
 ---
 

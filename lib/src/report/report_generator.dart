@@ -80,7 +80,7 @@ class ReportGenerator {
       final failures = entry.value.where((r) => r.hasGatingIssues).toList();
       if (failures.isEmpty) continue;
 
-      buf.writeln('### ${entry.key}');
+      buf.writeln('### ${_markdownCell(entry.key)}');
       buf.writeln();
       buf.writeln(
         '| Locale | Scale | Viewport | Issue | Diff % | Screenshot |',
@@ -113,18 +113,23 @@ class ReportGenerator {
           issues.add('Error: $msg');
         }
 
-        final detail = issues.join('<br>');
+        final detail = _markdownCell(issues.join('<br>'));
         final diffCell = r.diff != null
             ? '${r.diff!.diffPercent.toStringAsFixed(2)}%'
             : '';
-        final screenshotLink = r.screenshotPath != null
+        // Prefer what the variant actually rendered: the golden only exists
+        // once a baseline has been committed.
+        final shownScreenshot = r.actualScreenshotPath ?? r.screenshotPath;
+        final screenshotLink = shownScreenshot != null
             ? (screenshotLinkBuilder != null
-                  ? screenshotLinkBuilder(r.screenshotPath!)
-                  : '![${r.variant.label}](${r.screenshotPath})')
+                  ? screenshotLinkBuilder(shownScreenshot)
+                  : '![${r.variant.label}]($shownScreenshot)')
             : '';
 
         buf.writeln(
-          '| ${r.variant.locale} | ${r.variant.textScale}x | ${r.variant.viewport.name} | $detail | $diffCell | $screenshotLink |',
+          '| ${_markdownCell(r.variant.locale)} | ${r.variant.textScale}x | '
+          '${_markdownCell(r.variant.viewport.name)} | $detail | $diffCell | '
+          '$screenshotLink |',
         );
       }
       buf.writeln();
@@ -168,7 +173,8 @@ class ReportGenerator {
       final t = results.fold(0, (sum, r) => sum + r.truncations.length);
       final h = results.fold(0, (sum, r) => sum + r.hardcodedTexts.length);
       buf.writeln(
-        '| ${entry.key} | $p | $f | $o | $a | $t |${showHardcoded ? ' $h |' : ''}',
+        '| ${_markdownCell(entry.key)} | $p | $f | $o | $a | $t |'
+        '${showHardcoded ? ' $h |' : ''}',
       );
     }
     buf.writeln();
@@ -269,7 +275,9 @@ class ReportGenerator {
     );
     for (final locale in locales) {
       buf.writeln(
-        '<button class="filter-btn" data-filter="locale" data-value="$locale">${locale.toUpperCase()}</button>',
+        '<button class="filter-btn" data-filter="locale" '
+        'data-value="${_htmlEscape(locale)}">'
+        '${_htmlEscape(locale.toUpperCase())}</button>',
       );
     }
     buf.writeln('</div>');
@@ -281,7 +289,8 @@ class ReportGenerator {
       );
       for (final flow in flows) {
         buf.writeln(
-          '<button class="filter-btn" data-filter="flow" data-value="$flow">$flow</button>',
+          '<button class="filter-btn" data-filter="flow" '
+          'data-value="${_htmlEscape(flow)}">${_htmlEscape(flow)}</button>',
         );
       }
       buf.writeln('</div>');
@@ -293,8 +302,10 @@ class ReportGenerator {
       final flowName = entry.key;
       final results = entry.value;
 
-      buf.writeln('<section class="flow-section" data-flow="$flowName">');
-      buf.writeln('<h2>$flowName</h2>');
+      buf.writeln(
+        '<section class="flow-section" data-flow="${_htmlEscape(flowName)}">',
+      );
+      buf.writeln('<h2>${_htmlEscape(flowName)}</h2>');
       buf.writeln('<div class="card-grid">');
 
       for (final r in results) {
@@ -303,19 +314,23 @@ class ReportGenerator {
         final brightness = r.variant.isDark ? 'dark' : 'light';
 
         buf.writeln(
-          '<div class="card $status" data-locale="$locale" data-status="$status" data-brightness="$brightness">',
+          '<div class="card $status" data-locale="${_htmlEscape(locale)}" '
+          'data-status="$status" data-brightness="$brightness">',
         );
 
-        // Screenshot
-        if (r.screenshotPath != null) {
-          var imgPath = r.screenshotPath!;
+        // Screenshot: show what the variant actually rendered when it failed,
+        // otherwise the committed baseline.
+        final shownScreenshot = r.actualScreenshotPath ?? r.screenshotPath;
+        if (shownScreenshot != null) {
+          var imgPath = shownScreenshot;
           if (screenshotBasePath.isNotEmpty &&
               imgPath.startsWith(screenshotBasePath)) {
             imgPath = imgPath.substring(screenshotBasePath.length);
             if (imgPath.startsWith('/')) imgPath = imgPath.substring(1);
           }
           buf.writeln(
-            '<div class="card-img"><img src="$imgPath" alt="${r.variant.displayLabel}" loading="lazy"></div>',
+            '<div class="card-img"><img src="${_htmlEscape(imgPath)}" '
+            'alt="${_htmlEscape(r.variant.displayLabel)}" loading="lazy"></div>',
           );
         } else {
           buf.writeln(
@@ -389,7 +404,8 @@ class ReportGenerator {
             if (diffPath.startsWith('/')) diffPath = diffPath.substring(1);
           }
           buf.writeln(
-            '<div class="card-diff"><a href="$diffPath" target="_blank">View diff image</a></div>',
+            '<div class="card-diff"><a href="${_htmlEscape(diffPath)}" '
+            'target="_blank">View diff image</a></div>',
           );
         }
 
@@ -420,7 +436,8 @@ class ReportGenerator {
       final h = results.fold(0, (sum, r) => sum + r.hardcodedTexts.length);
       final rowClass = f > 0 ? ' class="row-fail"' : '';
       buf.writeln(
-        '<tr$rowClass><td>${entry.key.toUpperCase()}</td><td>$p</td><td>$f</td><td>$o</td><td>$a</td><td>$t</td>'
+        '<tr$rowClass><td>${_htmlEscape(entry.key.toUpperCase())}</td>'
+        '<td>$p</td><td>$f</td><td>$o</td><td>$a</td><td>$t</td>'
         '${summary.hardcodedTextCount > 0 ? '<td>$h</td>' : ''}</tr>',
       );
     }
@@ -449,7 +466,15 @@ class ReportGenerator {
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;');
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+  /// Escapes text for a Markdown table cell.
+  ///
+  /// Truncation text, ARB details and error messages can contain `|` or
+  /// newlines, which would otherwise break the table into extra columns.
+  static String _markdownCell(String text) =>
+      text.replaceAll('|', r'\|').replaceAll('\n', ' ');
 
   static void _htmlSummaryCard(
     StringBuffer buf,

@@ -46,6 +46,25 @@
   `LOCALE_SWEEP_*` variables fall back to the configured value, boolean variables
   accept `true`/`1`/`yes`, and unparseable numbers warn instead of silently
   reverting.
+- **Failing variants save their actual screenshot** to `.locale_sweep/actual/`
+  and the reports show it (`actualScreenshotPath`, JSON `actualScreenshot`), so a
+  first run with no baseline has screenshot proof instead of "No screenshot".
+  `screenshotPath` keeps pointing at the golden, which is never overwritten.
+- **Diff data is produced at every tolerance, including `0`.** The diff
+  comparator was only installed when `tolerance > 0`, so the default config had
+  an empty Diff % column and no `diff` field in `report.json`. Golden lookup
+  also falls back to the `LocalFileComparator` layout, fixing missing diffs for
+  tests that live in a subdirectory.
+- **ARB findings are reported once**, on the variant of the locale they belong
+  to, instead of being duplicated across every locale × scale × viewport ×
+  brightness. When the base locale is not in the matrix they attach to the first
+  variant that actually runs.
+- **Reports escape their inputs.** Markdown table cells escape `|` and newlines,
+  and HTML attributes (`src`, `href`, `data-*`) escape `"` `'` `<` `>`, so
+  truncation text or a flow name containing those no longer breaks the report.
+- **Golden comparison does not persist its captured image**, so the actual PNG
+  it produced is now written out for failing variants; the stale exception-drain
+  loop (which never fired) was removed.
 
 ## 0.7.2
 
