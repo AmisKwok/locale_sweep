@@ -397,6 +397,8 @@ untranslated_allowlist: [appName]
 # Report rendered text that matches no ARB message (needs arb_dir).
 hardcoded_text: true
 hardcoded_text_allowlist: ["^TaskFlow$"]
+# ARB files may use locale subtags: app_zh_Hans.arb, app_es_419.arb, en.arb,
+# app_en-US.arb are all recognized (previously only app_en.arb / app_en_US.arb).
 screenshot_dir: .locale_sweep/screenshots
 report_dir: .locale_sweep/reports
 ```
@@ -422,6 +424,11 @@ truncation_ignore:
 A rule matches only when **all** of its fields match the issue; the issue is
 ignored if **any** rule matches. `overflow` must be one of `ellipsis` / `clip` /
 `fade` / `visible` (matching `TruncationIssue.overflowMode`).
+
+A rule with an unknown key (a typo such as `text_regexp`) or an unsupported
+`overflow` value is **skipped with a warning on stderr** rather than applied with
+its remaining fields — otherwise a typo next to a valid `max_lines` would ignore
+far more than intended.
 
 For advanced cases that reference a widget type or key, pass `ignoreTruncation`
 to `sweepTest` using the `TruncationIgnores` helpers:

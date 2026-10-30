@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'arb_message_matcher.dart';
+
 /// Static analyzer for ARB (Application Resource Bundle) translation files.
 ///
 /// Detects missing keys and placeholder mismatches by comparing target locale
@@ -21,7 +23,7 @@ class ArbAnalyzer {
     return {
       for (final MapEntry(key: locale, value: arb) in _loadArbFiles(
         dir,
-      ).entries)
+      ).files.entries)
         locale: {
           for (final MapEntry(:key, :value) in arb.entries)
             if (!key.startsWith('@') && value is String) key: value,
@@ -29,21 +31,37 @@ class ArbAnalyzer {
     };
   }
 
-  static Map<String, Map<String, dynamic>> _loadArbFiles(Directory dir) {
+  /// Reads every `*.arb` file in [dir], keyed by the locale in its file name.
+  ///
+  /// Files that cannot be read are reported through [ArbFileLoading.errors]
+  /// instead of being replaced with an empty map: an unreadable base ARB used
+  /// to yield an empty key set, which silently passed every other check.
+  static ArbFileLoading _loadArbFiles(Directory dir) {
     final arbFiles = <String, Map<String, dynamic>>{};
+    final errors = <String, String>{};
     for (final file in dir.listSync().whereType<File>()) {
       if (!file.path.endsWith('.arb')) continue;
       final name = p.basenameWithoutExtension(file.path);
       final locale = _extractLocale(name);
-      if (locale == null) continue;
+      if (locale == null) {
+        stderr.writeln(
+          'Warning: skipped ARB file "${p.basename(file.path)}" — the file '
+          'name carries no locale tag (expected e.g. app_en.arb, '
+          'app_zh_Hans.arb or app_es_419.arb).',
+        );
+        continue;
+      }
       try {
         arbFiles[locale] =
             jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
       } catch (e) {
-        arbFiles[locale] = {};
+        errors[locale] = e.toString();
+        stderr.writeln(
+          'Warning: failed to parse ARB file "${p.basename(file.path)}": $e',
+        );
       }
     }
-    return arbFiles;
+    return ArbFileLoading(files: arbFiles, errors: errors);
   }
 
   static ArbReport analyze({
@@ -65,12 +83,32 @@ class ArbAnalyzer {
       );
     }
 
-    final arbFiles = _loadArbFiles(dir);
+    final loading = _loadArbFiles(dir);
+    final arbFiles = loading.files;
+    final issues = <ArbIssue>[];
+
+    // Report unreadable files up front: analyzing an empty key set would
+    // report "everything is fine" for a locale whose JSON is broken.
+    for (final MapEntry(key: locale, value: error) in loading.errors.entries) {
+      issues.add(
+        ArbIssue(
+          type: ArbIssueType.parseError,
+          locale: locale,
+          detail: 'Failed to parse ARB file for "$locale": $error',
+        ),
+      );
+    }
 
     final baseArb = arbFiles[baseLocale];
     if (baseArb == null) {
+      // An unparseable base file is already reported as a parseError above;
+      // calling it "missing" would send users looking for the wrong problem.
+      if (loading.errors.containsKey(baseLocale)) {
+        return ArbReport(issues: issues);
+      }
       return ArbReport(
         issues: [
+          ...issues,
           ArbIssue(
             type: ArbIssueType.missingFile,
             locale: baseLocale,
@@ -86,20 +124,27 @@ class ArbAnalyzer {
     final basePlaceholders = <String, Set<String>>{};
     for (final key in baseKeys) {
       final meta = baseArb['@$key'];
-      if (meta is Map && meta['placeholders'] is Map) {
-        basePlaceholders[key] = (meta['placeholders'] as Map).keys
-            .cast<String>()
-            .toSet();
-      }
+      final declared = meta is Map && meta['placeholders'] is Map
+          ? (meta['placeholders'] as Map).keys.cast<String>().toSet()
+          : <String>{};
+      final value = baseArb[key];
+      // `@key.placeholders` metadata is optional. Without it, fall back to the
+      // placeholders that actually appear in the base message so hand-written
+      // ARB files are still checked instead of being skipped entirely.
+      basePlaceholders[key] = {
+        ...declared,
+        if (value is String) ...placeholdersIn(value),
+      };
     }
-
-    final issues = <ArbIssue>[];
 
     for (final locale in locales) {
       if (locale == baseLocale) continue;
 
       final arb = arbFiles[locale];
       if (arb == null) {
+        // An unparseable file is reported as a parseError; reporting every
+        // base key as "missing" on top of it would only add false positives.
+        if (loading.errors.containsKey(locale)) continue;
         issues.add(
           ArbIssue(
             type: ArbIssueType.missingFile,
@@ -148,18 +193,32 @@ class ArbAnalyzer {
         final expectedPlaceholders = basePlaceholders[key];
         if (expectedPlaceholders != null && expectedPlaceholders.isNotEmpty) {
           if (value is String) {
-            for (final ph in expectedPlaceholders) {
-              if (!_containsPlaceholder(value, ph)) {
-                issues.add(
-                  ArbIssue(
-                    type: ArbIssueType.placeholderMismatch,
-                    locale: locale,
-                    key: key,
-                    detail:
-                        'Placeholder {$ph} missing in $locale value for "$key"',
-                  ),
-                );
-              }
+            final actual = placeholdersIn(value);
+            for (final ph in _sorted(expectedPlaceholders.difference(actual))) {
+              issues.add(
+                ArbIssue(
+                  type: ArbIssueType.placeholderMismatch,
+                  locale: locale,
+                  key: key,
+                  detail:
+                      'Placeholder {$ph} missing in $locale value for "$key"',
+                ),
+              );
+            }
+            // A placeholder that only exists in the target is either a typo
+            // or an argument the base locale does not pass — it renders as a
+            // literal `{nmae}` instead of a value.
+            for (final ph in _sorted(actual.difference(expectedPlaceholders))) {
+              issues.add(
+                ArbIssue(
+                  type: ArbIssueType.placeholderMismatch,
+                  locale: locale,
+                  key: key,
+                  detail:
+                      'Placeholder {$ph} in $locale value for "$key" is not '
+                      'declared in $baseLocale',
+                ),
+              );
             }
           }
         }
@@ -169,16 +228,58 @@ class ArbAnalyzer {
     return ArbReport(issues: issues);
   }
 
-  /// Checks whether [value] contains [placeholder] in any valid ICU form:
-  /// `{name}`, `{name, plural, ...}`, `{name, select, ...}`, etc.
-  static bool _containsPlaceholder(String value, String placeholder) {
-    return RegExp('{$placeholder[},]').hasMatch(value);
+  /// The placeholder names referenced by [value].
+  ///
+  /// Delegates to the ICU parser, so branch bodies are not mistaken for
+  /// arguments in either spacing style (`male{he}` and `male {he}`) while
+  /// nested arguments still count.
+  static Set<String> placeholdersIn(String value) =>
+      ArbMessageMatcher.argumentNames(value);
+
+  static List<String> _sorted(Iterable<String> values) =>
+      values.toList()..sort();
+
+  /// Extracts the locale tag from an ARB file name.
+  ///
+  /// Accepts the shapes `flutter gen-l10n` produces: `app_en`, `app_en_US`,
+  /// `app_zh_Hans`, `app_zh_Hans_CN`, `app_es_419`, plus hyphenated
+  /// (`app_en-US`) and unprefixed (`en`) names. Returns `null` when the name
+  /// has no locale tag.
+  static String? _extractLocale(String filename) {
+    final parts = filename.split(RegExp(r'[-_]'));
+    for (var i = 0; i < parts.length; i++) {
+      final candidate = parts.sublist(i).join('_');
+      if (_isLocaleTag(candidate)) return candidate;
+    }
+    return null;
   }
 
-  static String? _extractLocale(String filename) {
-    final match = RegExp(r'_([a-z]{2}(?:_[A-Z]{2})?)$').firstMatch(filename);
-    return match?.group(1);
+  /// Whether [tag] is a language(+script/region) tag such as `en`, `zh_Hans`,
+  /// `zh_Hans_CN`, `es_419` or `fil`.
+  static bool _isLocaleTag(String tag) {
+    final parts = tag.split('_');
+    if (parts.isEmpty || parts.length > 3) return false;
+    if (!RegExp(r'^[a-z]{2,3}$').hasMatch(parts.first)) return false;
+    for (final part in parts.skip(1)) {
+      // Script (`Hans`), region (`US`, `419` for UN M.49) — see BCP-47.
+      if (RegExp(r'^[A-Z][a-z]{3}$').hasMatch(part)) continue;
+      if (RegExp(r'^[A-Z]{2}$').hasMatch(part)) continue;
+      if (RegExp(r'^[0-9]{3}$').hasMatch(part)) continue;
+      return false;
+    }
+    return true;
   }
+}
+
+/// The ARB files found in a directory, plus the ones that failed to parse.
+class ArbFileLoading {
+  /// Parsed ARB files keyed by locale.
+  final Map<String, Map<String, dynamic>> files;
+
+  /// Parse errors keyed by locale, for files that could not be read.
+  final Map<String, String> errors;
+
+  const ArbFileLoading({required this.files, this.errors = const {}});
 }
 
 /// Result of an ARB analysis containing all detected issues.
@@ -210,6 +311,9 @@ class ArbReport {
 enum ArbIssueType {
   /// An expected ARB file was not found.
   missingFile,
+
+  /// An ARB file exists but could not be read (invalid JSON).
+  parseError,
 
   /// A key present in the base locale is missing in the target locale.
   missingKey,
