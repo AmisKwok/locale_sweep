@@ -1,14 +1,18 @@
-## 0.7.3
+## 0.8.0
 
-- **Hardcoded text detection no longer goes silent when the ARB contains a
-  placeholder-only message.** A message such as `"userName": "{name}"`, or a
-  `plural` branch like `=0{{count}}`, compiled to a pattern that matched any
-  text, so no hardcoded string was ever reported for that locale. Message
-  shapes without literal letters are now ignored when matching. Text rendered
-  only through such a message (a user's name, for example) is reported;
-  exempt it with `hardcoded_text_allowlist`.
+**Upgrade notes** — these changes can alter results on existing projects:
 
-## Unreleased
+- **Placeholder checks are stricter**, so CI that passed on 0.7.x can report
+  new `placeholderMismatch` findings. They are real bugs: translations that
+  drop a placeholder, or add one the base locale does not pass.
+- **ARB findings are reported once per locale** instead of on every variant,
+  so failed-variant counts drop. Base-locale problems no longer fail every
+  variant in the matrix.
+- **`truncation_ignore` rules with a typo are skipped** instead of being
+  applied with their remaining fields, so truncations they silently hid may
+  appear again.
+
+**Changes**
 
 - **ARB files that cannot be read are reported** instead of being treated as
   empty. A broken base ARB used to yield an empty key set and silently pass
@@ -62,9 +66,25 @@
 - **Reports escape their inputs.** Markdown table cells escape `|` and newlines,
   and HTML attributes (`src`, `href`, `data-*`) escape `"` `'` `<` `>`, so
   truncation text or a flow name containing those no longer breaks the report.
-- **Golden comparison does not persist its captured image**, so the actual PNG
-  it produced is now written out for failing variants; the stale exception-drain
-  loop (which never fired) was removed.
+- **Windows support for the CLI** — `flutter test` is started through
+  `flutter.bat` when `flutter` cannot be resolved from `PATH`.
+- **Old runs are pruned** — `.locale_sweep/runs/` keeps the 10 most recent run
+  directories instead of growing without bound.
+- **Older result files still load.** A result without `overflows` /
+  `arbIssues` lists is read as having no findings instead of discarding the
+  whole file.
+
+Thanks to @AmisKwok for these fixes.
+
+## 0.7.3
+
+- **Hardcoded text detection no longer goes silent when the ARB contains a
+  placeholder-only message.** A message such as `"userName": "{name}"`, or a
+  `plural` branch like `=0{{count}}`, compiled to a pattern that matched any
+  text, so no hardcoded string was ever reported for that locale. Message
+  shapes without literal letters are now ignored when matching. Text rendered
+  only through such a message (a user's name, for example) is reported;
+  exempt it with `hardcoded_text_allowlist`.
 
 ## 0.7.2
 

@@ -45,8 +45,8 @@ sweepTest(
 | # | Category | How |
 |:--|:--|:--|
 | 1 | **Text overflow** | Intercepts `RenderFlex` overflow errors — German compound words, Arabic expansion, CJK wrapping |
-| 2 | **Missing ARB keys** | Keys in `app_en.arb` absent from target locale files |
-| 3 | **Placeholder mismatches** | `{count}`, `{name}` etc. missing in translations |
+| 2 | **Missing ARB keys** | Keys in `app_en.arb` absent from target locale files, plus ARB files that can't be read (invalid JSON) |
+| 3 | **Placeholder mismatches** | `{count}`, `{name}` etc. missing in translations, or added by them (`{nmae}`), even without `@key` metadata |
 | 4 | **Untranslated strings** | Strings identical to the base locale — likely never translated |
 | 5 | **Golden regression** | Pixel-level comparison against committed baselines |
 | 6 | **Screenshot diffing** | Pixel-diff %, 3-panel side-by-side images, configurable tolerance |
@@ -65,7 +65,7 @@ sweepTest(
 
 ```yaml
 dev_dependencies:
-  locale_sweep: ^0.7.3
+  locale_sweep: ^0.8.0
 ```
 
 ### 2. Write a sweep test
@@ -511,6 +511,9 @@ Three formats generated on every run:
   diffs/
     onboarding_de_393x852_diff.png
     ...
+  actual/
+    onboarding_de_393x852.png   # what a failing variant rendered
+    ...
   runs/
     run_.../
       flutter.jsonl
@@ -520,8 +523,9 @@ Three formats generated on every run:
 ```
 
 Each CLI invocation gets a separate run directory, so previous results cannot
-leak into the current report. Direct `flutter test` runs continue to write
-flow results under `.locale_sweep/results/`.
+leak into the current report. The 10 most recent run directories are kept.
+Direct `flutter test` runs continue to write flow results under
+`.locale_sweep/results/`.
 
 ---
 
@@ -605,6 +609,7 @@ dart run locale_sweep run --flows onboarding,checkout     # Specific flows
 dart run locale_sweep run --github-pr                     # Post PR comment
 dart run locale_sweep run --fail-on overflow,golden       # Selective failure
 dart run locale_sweep run --config my_config.yaml         # Custom config
+dart run locale_sweep run --test-dir test/l10n            # Sweep tests outside test/sweep
 dart run locale_sweep run --verbose                       # Print flutter test output
 dart run locale_sweep run --timeout 600                   # Kill the run after 10 min
 dart run locale_sweep run --shards 3 --shard-index 0      # Parallel shard
@@ -613,6 +618,7 @@ dart run locale_sweep update                              # Regenerate baselines
 dart run locale_sweep update --flows settings             # Update specific flows
 dart run locale_sweep merge -i shard_0 -i shard_1         # Merge shard reports
 dart run locale_sweep scan                                # Discover monorepo packages
+dart run locale_sweep scan --root packages                # Discover under a subfolder
 ```
 
 ---
@@ -677,4 +683,4 @@ Custom: `ViewportPreset(name: '1280x800', width: 1280, height: 800)`
 
 ---
 
-430 tests across 26 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
+461 tests across 29 files. [Full changelog](CHANGELOG.md). [MIT License](https://opensource.org/licenses/MIT).
