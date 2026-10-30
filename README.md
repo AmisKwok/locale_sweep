@@ -597,6 +597,7 @@ dart run locale_sweep run --github-pr                     # Post PR comment
 dart run locale_sweep run --fail-on overflow,golden       # Selective failure
 dart run locale_sweep run --config my_config.yaml         # Custom config
 dart run locale_sweep run --verbose                       # Print flutter test output
+dart run locale_sweep run --timeout 600                   # Kill the run after 10 min
 dart run locale_sweep run --shards 3 --shard-index 0      # Parallel shard
 dart run locale_sweep run --packages apps/a,apps/b        # Monorepo
 dart run locale_sweep update                              # Regenerate baselines

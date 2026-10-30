@@ -35,6 +35,13 @@ class SweepResult {
   /// Path to the golden screenshot file, if captured.
   final String? screenshotPath;
 
+  /// Path to the image a failing variant actually rendered, if saved.
+  ///
+  /// Golden comparison never writes what it captured, so this is the only
+  /// visual proof for a first run (no baseline yet) or a regression.
+  /// `screenshotPath` keeps pointing at the baseline.
+  final String? actualScreenshotPath;
+
   /// Error message if the test threw an exception.
   final String? errorMessage;
 
@@ -56,14 +63,19 @@ class SweepResult {
     this.truncations = const [],
     this.hardcodedTexts = const [],
     this.screenshotPath,
+    this.actualScreenshotPath,
     this.errorMessage,
     this.failureKind,
     this.duration = Duration.zero,
     this.diff,
   });
 
-  /// Creates a copy with an optional replacement [screenshotPath].
-  SweepResult copyWith({String? screenshotPath}) => SweepResult(
+  /// Creates a copy with optional replacement screenshot paths.
+  SweepResult copyWith({
+    String? screenshotPath,
+    String? actualScreenshotPath,
+    DiffResult? diff,
+  }) => SweepResult(
     flowName: flowName,
     variant: variant,
     passed: passed,
@@ -72,10 +84,11 @@ class SweepResult {
     truncations: truncations,
     hardcodedTexts: hardcodedTexts,
     screenshotPath: screenshotPath ?? this.screenshotPath,
+    actualScreenshotPath: actualScreenshotPath,
     errorMessage: errorMessage,
     failureKind: failureKind,
     duration: duration,
-    diff: diff,
+    diff: diff ?? this.diff,
   );
 
   /// Whether any overflow errors were captured.
@@ -138,6 +151,7 @@ class SweepResult {
     'truncations': truncations.map((e) => e.toJson()).toList(),
     'hardcodedTexts': hardcodedTexts.map((e) => e.toJson()).toList(),
     'screenshot': screenshotPath,
+    if (actualScreenshotPath != null) 'actualScreenshot': actualScreenshotPath,
     'error': errorMessage,
     if (failureKind != null) 'failureKind': failureKind!.name,
     'durationMs': duration.inMilliseconds,
@@ -159,12 +173,17 @@ class SweepResult {
       renderLocale: json['renderLocale'] as String?,
     ),
     passed: json['passed'] as bool,
-    overflows: (json['overflows'] as List)
-        .map((e) => OverflowError.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    arbIssues: (json['arbIssues'] as List)
-        .map((e) => ArbIssue.fromJson(e as Map<String, dynamic>))
-        .toList(),
+    // Older result files (and results written by other tools) predate these
+    // fields, so treat a missing/corrupt list as "no findings" instead of
+    // throwing and discarding the whole result file.
+    overflows: _decodeList(
+      json['overflows'],
+      (e) => OverflowError.fromJson(e as Map<String, dynamic>),
+    ),
+    arbIssues: _decodeList(
+      json['arbIssues'],
+      (e) => ArbIssue.fromJson(e as Map<String, dynamic>),
+    ),
     truncations:
         (json['truncations'] as List?)
             ?.map((e) => TruncationIssue.fromJson(e as Map<String, dynamic>))
@@ -176,6 +195,7 @@ class SweepResult {
             .toList() ??
         const [],
     screenshotPath: json['screenshot'] as String?,
+    actualScreenshotPath: json['actualScreenshot'] as String?,
     errorMessage: json['error'] as String?,
     failureKind: switch (json['failureKind']) {
       'golden' => SweepFailureKind.golden,
@@ -188,6 +208,16 @@ class SweepResult {
         : null,
   );
 }
+
+/// Decodes an optional JSON list of objects, defaulting to an empty list.
+List<T> _decodeList<T>(Object? value, T Function(Object) decode) =>
+    switch (value) {
+      final List list => [
+        for (final item in list)
+          if (item is Map<String, dynamic>) decode(item),
+      ],
+      _ => const [],
+    };
 
 /// Aggregates [SweepResult]s with summary statistics.
 class SweepRunSummary {

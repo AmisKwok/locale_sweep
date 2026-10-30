@@ -30,6 +30,22 @@
   `max_lines` used to ignore every short truncation. An unsupported `overflow`
   value (`ellipses`) is rejected with a warning too, instead of leaving a
   permanently dead rule.
+- **`--timeout` is opt-in and bounded with escalation.** When omitted the run is
+  unbounded (the CI job timeout applies), so large matrices and monorepos that
+  currently pass are not killed. An invalid value (`--timeout abc` / `0`) is now a
+  usage error. A run that exceeds the limit is killed, and if it survives that it
+  is escalated to SIGKILL, so a hung golden wait or font download cannot pin the
+  CLI open forever.
+- **`--flows` warns when it widens the run.** Selecting a file by name only (for
+  a file declaring different flow names) runs every flow in that file; `selectFlows`
+  now reports this through a flag instead of writing to stderr from library code.
+- **Malformed `locale_sweep.yaml` no longer aborts the run.** Wrong-typed entries
+  (`locales: [en, 1]`, `text_scales: ["2.0"]`, a viewport without `width`) are
+  dropped with a warning and the default is used when nothing valid remains,
+  instead of throwing a `TypeError` before any report is written. Empty
+  `LOCALE_SWEEP_*` variables fall back to the configured value, boolean variables
+  accept `true`/`1`/`yes`, and unparseable numbers warn instead of silently
+  reverting.
 
 ## 0.7.2
 
